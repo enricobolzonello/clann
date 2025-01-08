@@ -10,7 +10,6 @@ pub struct EuclideanData<S: Data<Elem = f32>> {
 impl<S: Data<Elem = f32>> EuclideanData<S> {
     pub fn new(data: ArrayBase<S, Ix2>) -> Self {
         let norms = data.rows().into_iter().map(|row| row.dot(&row)).collect();
-        let dimension = data.dim().1;
 
         Self {
             data,

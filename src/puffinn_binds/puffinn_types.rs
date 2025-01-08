@@ -1,8 +1,8 @@
 use ndarray::Data;
 
-use crate::metricdata::{AngularData, EuclideanData, MetricData};
+use crate::metricdata::{AngularData, MetricData};
 
-use super::puffinn_bindings::{CPUFFINN_index_insert_float, CPUFFINN_index_insert_uint32, CPUFFINN_search_float, CPUFFINN_search_uint32, CPUFFINN};
+use super::puffinn_bindings::{CPUFFINN_index_insert_float, CPUFFINN_search_float, CPUFFINN};
 
 /// This trait extends [`MetricData`] enabling the insertion of the data into the PUFFINN index.
 pub trait IndexableSimilarity<M: MetricData> {

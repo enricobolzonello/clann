@@ -39,7 +39,7 @@ impl<T: MetricData + IndexableSimilarity<T>> ClusteredIndex<T> {
     /// let index = ClusteredIndex::new(config, data).unwrap();
     /// ```
     pub fn new(config: Config, data: T) -> Result<Self> {
-        config
+        let _ = config
             .validate()
             .map_err(ClusteredIndexError::ConfigError);
 

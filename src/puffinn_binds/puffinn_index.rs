@@ -1,11 +1,9 @@
-use core::slice;
 use super::puffinn_bindings::{
-    CPUFFINN_index_create, CPUFFINN_index_insert_float, CPUFFINN_index_rebuild, CPUFFINN_search_float, CPUFFINN,
+    CPUFFINN_index_create, CPUFFINN_index_rebuild, CPUFFINN,
 };
 use super::puffinn_types::IndexableSimilarity;
 use crate::metricdata::MetricData;
 use std::ffi::CString;
-use std::marker::PhantomData;
 
 pub struct PuffinnIndex {
     raw: *mut CPUFFINN,

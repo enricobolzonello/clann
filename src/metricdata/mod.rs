@@ -16,7 +16,5 @@ pub trait Subset {
     fn subset<I: IntoIterator<Item = usize>>(&self, indices: I) -> Self::Out;
 }
 
-use ndarray::ArrayView1;
-
 pub use self::euclideandata::EuclideanData;
 pub use self::angulardata::AngularData;

@@ -1,4 +1,4 @@
-use ndarray::{prelude::*, Data};
+use ndarray::prelude::*;
 
 use crate::metricdata::MetricData;
 
@@ -60,34 +60,4 @@ pub fn greedy_minimum_maximum<D: MetricData>(
     }
 
     (centers, assignment, radii)
-}
-
-fn assign_closest<D: MetricData>(
-    data: &D,
-    centers: &Array1<usize>,
-) -> (Array1<usize>, Array1<f32>) {
-    let n = data.num_points();
-    let n_centers = centers.len();
-
-    let mut distances: Array1<f32> = Array1::from_elem(n, f32::INFINITY);
-    let mut assignment = Array1::<usize>::zeros(n);
-
-    for i in 0..n {
-        for c in 0..n_centers {
-            let idx = centers[c];
-            let d = data.distance(idx, i);
-            if d < distances[i] {
-                assignment[i] = c;
-                distances[i] = d;
-            }
-        }
-    }
-
-    let mut radii: Array1<f32> = Array1::zeros(n_centers);
-
-    for i in 0..n {
-        radii[assignment[i]] = radii[assignment[i]].max(distances[i]);
-    }
-
-    (assignment, radii)
 }
