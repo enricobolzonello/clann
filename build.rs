@@ -54,7 +54,7 @@ fn main() {
         .expect("Unable to generate bindings");
 
     bindings
-        .write_to_file("src/puffinn_bindings.rs")
+        .write_to_file("src/puffinn_binds/puffinn_bindings.rs")
         .expect("Couldn't write bindings!");
 
     // Link against OpenMP
