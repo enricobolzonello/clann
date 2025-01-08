@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use tracing::{debug, info};
 
-use crate::core::{ClusteredIndexError, Config};
+use crate::core::{ClusteredIndexError, Config, Result};
 use crate::metricdata::MetricData;
 use crate::puffinn_binds::IndexableSimilarity;
 use crate::puffinn_binds::PuffinnIndex;
@@ -38,11 +38,15 @@ impl<T: MetricData + IndexableSimilarity<T>> ClusteredIndex<T> {
     /// let data = EuclideanData::new(your_array);
     /// let index = ClusteredIndex::new(config, data).unwrap();
     /// ```
-    pub fn new(config: Config, data: T) -> Result<Self, ClusteredIndexError> {
+    pub fn new(config: Config, data: T) -> Result<Self> {
         config
             .validate()
-            .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()));
+            .map_err(ClusteredIndexError::ConfigError);
 
+        if data.num_points() == 0 {
+            return Err(ClusteredIndexError::DataError("empty dataset".to_string()));
+        }
+            
         info!("Initializing Index with config {:?}", config);
 
         Ok(ClusteredIndex {
@@ -52,7 +56,7 @@ impl<T: MetricData + IndexableSimilarity<T>> ClusteredIndex<T> {
         })
     }
 
-    pub fn build(&mut self) {
+    pub fn build(&mut self) -> Result<()>{
 
         // 1) PERFORM CLUSTERING
         let (centers, assignment, radius) = greedy_minimum_maximum(&self.data, self.config.k);
@@ -69,6 +73,8 @@ impl<T: MetricData + IndexableSimilarity<T>> ClusteredIndex<T> {
         for (idx, &center_idx) in assignment.iter().enumerate() {
             if let Some(&pos) = center_to_pos.get(&center_idx) {
                 assignments[pos].push(idx);
+            } else {
+                return Err(ClusteredIndexError::InvalidAssignment(center_idx));
             }
         }
 
@@ -92,7 +98,12 @@ impl<T: MetricData + IndexableSimilarity<T>> ClusteredIndex<T> {
         
             debug!("Cluster {} memory limit {}", cluster.index, cluster_memory_limit);
 
-            let puffinn_index = PuffinnIndex::new(&self.data, cluster_memory_limit);
+            let puffinn_index = PuffinnIndex::new(&self.data, cluster_memory_limit).map_err(|e| ClusteredIndexError::PuffinnCreationError(e));
+
+            if cluster.assignment.is_empty() {
+                debug!("Skipping empty cluster {}", cluster.index);
+                continue;
+            }            
 
             for point_idx in &cluster.assignment {
                 // TODO
@@ -100,9 +111,11 @@ impl<T: MetricData + IndexableSimilarity<T>> ClusteredIndex<T> {
             }
         }
 
+        Ok(())
+
     }
 
-    pub fn search(&self, query_idx: usize, k: usize, delta: f32) -> Vec<(usize, f32)> {
+    pub fn search(&self, query_idx: usize, k: usize, delta: f32) -> Result<Vec<(usize, f32)>> {
         todo!()
     }
 }

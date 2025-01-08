@@ -4,4 +4,4 @@ pub mod errors;
 pub mod gmm;
 
 pub use config::Config;
-pub use errors::ClusteredIndexError;
+pub use errors::{Result, ClusteredIndexError};
