@@ -44,5 +44,34 @@ impl PuffinnIndex {
 
         Ok(index)
     }
+
+    pub fn search<M: MetricData + IndexableSimilarity<M>>(
+        &self,
+        query: &[M::DataType],
+        k: usize,
+        recall: f32,
+    ) -> Result<Vec<u32>, String> {
+
+        unsafe {
+            
+            let results_ptr = M::search_data(
+                self.raw,
+                query.as_ptr(),
+                k as u32,
+                recall,
+                query.len() as i32,
+            );
+
+            if results_ptr.is_null() {
+                return Err("Search failed: returned null pointer.".to_string());
+            }
+
+            let results_slice = std::slice::from_raw_parts(results_ptr, k);
+            let results = results_slice.to_vec();
+
+            Ok(results)
+            
+        }
+    }
 }
 

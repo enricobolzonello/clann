@@ -25,6 +25,14 @@ impl<S: Data<Elem = f32>> MetricData for AngularData<S> {
         1.0 - ( self.data.row(i).dot(&self.data.row(j)) / (self.norms[i] * self.norms[j]) )
     }
 
+    fn distance_point(&self, i: usize, point: &[Self::DataType]) -> f32 { 
+        let dot_product = self.data.row(i).dot(&ndarray::ArrayView1::from(point));
+        let cosine_similarity = dot_product / (self.norms[i] * point.iter().map(|&x| x * x).sum::<f32>().sqrt());
+    
+        1.0 - cosine_similarity
+
+    }
+
     fn all_distances(&self, j: usize, out: &mut [f32]){
         assert_eq!(out.len(), self.data.nrows());
         for (i, oo) in out.iter_mut().enumerate() {

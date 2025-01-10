@@ -30,7 +30,7 @@ pub trait IndexableSimilarity<M: MetricData> {
 impl<S: Data<Elem = f32>, M: MetricData> IndexableSimilarity<M> for AngularData<S> {
 
     fn similarity_type(&self) -> &'static str {
-        "cosine"
+        "angular"
     }
 
     unsafe fn insert_data(

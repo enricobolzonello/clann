@@ -9,6 +9,7 @@ pub trait MetricData {
     fn num_points(&self) -> usize;
     fn dimensions(&self) -> usize;
     fn get_point(&self, i: usize) -> &[Self::DataType];
+    fn distance_point(&self, i: usize, point: &[Self::DataType]) -> f32; 
 }
 
 pub trait Subset {

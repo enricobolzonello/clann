@@ -31,6 +31,19 @@ impl<S: Data<Elem = f32>> MetricData for EuclideanData<S> {
         }
     }
 
+    fn distance_point(&self, i: usize, point: &[Self::DataType]) -> f32 {
+        let row = self.data.row(i);
+        let sq_eucl = self.squared_norms[i] 
+            + point.iter().map(|&x| x * x).sum::<f32>() 
+            - 2.0 * row.dot(&ndarray::ArrayView1::from(point));
+        
+        if sq_eucl < 0.0 {
+            0.0
+        } else {
+            sq_eucl.sqrt()
+        }
+    }
+
     fn all_distances(&self, j: usize, out: &mut [f32]) {
         // OPTIMIZE: try using matrix vector product, for instance
         assert_eq!(out.len(), self.data.nrows());

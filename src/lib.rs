@@ -6,18 +6,41 @@
 
 use core::{index::ClusteredIndex, Config, Result};
 
-use metricdata::MetricData;
+use metricdata::{MetricData, Subset};
 use puffinn_binds::IndexableSimilarity;
 
 pub mod metricdata;
 pub mod core;
 pub mod puffinn_binds;
 
-pub fn init<T: MetricData + IndexableSimilarity<T>>(data: T) -> Result<ClusteredIndex<T>> {
+pub fn init<T>(data: T) -> Result<ClusteredIndex<T>>
+where
+    T: MetricData + IndexableSimilarity<T> + Subset,
+    <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
+{
     init_with_config(data, Config::default())
 }
 
-
-pub fn init_with_config<T: MetricData + IndexableSimilarity<T>>(data: T, config: Config) -> Result<ClusteredIndex<T>> {
+pub fn init_with_config<T>(data: T, config: Config) -> Result<ClusteredIndex<T>>
+where
+    T: MetricData + IndexableSimilarity<T> + Subset,
+    <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
+{
     ClusteredIndex::new(config, data)
+}
+
+pub fn build<T>(index: &mut ClusteredIndex<T>) -> Result<()>
+where
+    T: MetricData + IndexableSimilarity<T> + Subset,
+    <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
+{
+    index.build()
+}
+
+pub fn search<T>(index: &ClusteredIndex<T>, query: &[T::DataType], k: usize, delta: f32) -> Result<Vec<(f32, usize)>>
+where
+    T: MetricData + IndexableSimilarity<T> + Subset,
+    <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
+{
+    index.search(query, k, delta)
 }

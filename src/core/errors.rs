@@ -15,4 +15,7 @@ pub enum ClusteredIndexError {
 
     #[error("PUFFINN Creation Error: {0}")]
     PuffinnCreationError(String),
+
+    #[error("PUFFINN Search Error: {0}")]
+    PuffinnSearchError(String),
 }
