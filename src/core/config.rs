@@ -7,14 +7,22 @@ pub struct Config {
     pub memory_limit: usize,
 
     /// Number of clusters
-    pub k: usize
+    pub num_clusters: usize,
+
+    /// Number of nearest neighbors to search
+    pub k: Option<usize>,
+
+    /// Recall
+    pub delta: Option<f32>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self { 
             memory_limit: 1073741824,   // 1 Gb 
-            k: 5 
+            num_clusters: 5,
+            k: None, 
+            delta: None
         }
     }
 }
@@ -22,16 +30,20 @@ impl Default for Config {
 impl Config {
     pub fn new(
         memory_limit: usize,
-        k: usize
+        num_clusters: usize,
+        k: Option<usize>,
+        delta: Option<f32>
     ) -> Self {
         Self{
             memory_limit,
-            k
+            num_clusters,
+            k,
+            delta
         }
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.k < 2 {
+        if self.num_clusters < 2 {
             return Err("Clusters must be at least 2".to_string());
         }
 
@@ -49,21 +61,21 @@ mod tests {
         
         // Check default values
         assert_eq!(config.memory_limit, 1073741824); // 1 GB
-        assert_eq!(config.k, 5);
+        assert_eq!(config.num_clusters, 5);
     }
 
     #[test]
     fn test_new_config() {
-        let config = Config::new(2048, 10);
+        let config = Config::new(2048, 10, None, None);
         
         // Check custom values
         assert_eq!(config.memory_limit, 2048);
-        assert_eq!(config.k, 10);
+        assert_eq!(config.num_clusters, 10);
     }
 
     #[test]
     fn test_validate_valid_config() {
-        let config = Config::new(2048, 10);
+        let config = Config::new(2048, 10, None, None);
         
         // Validate should succeed for valid config
         assert!(config.validate().is_ok());
@@ -71,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_validate_invalid_config() {
-        let config = Config::new(2048, 1);
+        let config = Config::new(2048, 1, None, None);
         
         // Validate should fail when k < 2
         let result = config.validate();
@@ -80,7 +92,7 @@ mod tests {
 
     #[test]
     fn test_serialize_config() {
-        let config = Config::new(2048, 10);
+        let config = Config::new(2048, 10, None, None);
         
         // Check if it can serialize and deserialize
         let serialized = serde_json::to_string(&config).unwrap();
@@ -88,6 +100,6 @@ mod tests {
         
         // Assert the deserialized config matches the original
         assert_eq!(config.memory_limit, deserialized.memory_limit);
-        assert_eq!(config.k, deserialized.k);
+        assert_eq!(config.num_clusters, deserialized.num_clusters);
     }
 }

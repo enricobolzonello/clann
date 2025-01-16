@@ -1,11 +1,14 @@
+use std::time::Instant;
+
 use ordered_float::OrderedFloat;
-use tracing::{debug, info};
+use log::{debug, info};
 
 use crate::core::heap::Element;
 use crate::core::{ClusteredIndexError, Config, Result};
 use crate::metricdata::{MetricData, Subset};
 use crate::puffinn_binds::IndexableSimilarity;
 use crate::puffinn_binds::PuffinnIndex;
+use crate::utils::metrics::RunMetrics;
 
 use super::gmm::greedy_minimum_maximum;
 use super::heap::TopKClosestHeap;
@@ -27,6 +30,7 @@ where
     clusters: Vec<ClusterCenter>,
     config: Config,
     puffinn_indices: Vec<PuffinnIndex>,
+    metrics: Option<RunMetrics>,
 }
 
 impl<T> ClusteredIndex<T>
@@ -58,13 +62,14 @@ where
 
         info!("Initializing Index with config {:?}", config);
 
-        let k = config.k;
+        let k = config.num_clusters;
 
         Ok(ClusteredIndex {
             data,
             clusters: Vec::with_capacity(k),
             config,
             puffinn_indices: Vec::with_capacity(k),
+            metrics: None
         })
     }
 
@@ -79,9 +84,7 @@ where
     /// ```
     pub fn build(&mut self) -> Result<()> {
         // 1) PERFORM CLUSTERING
-        let (centers, assignment, radius) = greedy_minimum_maximum(&self.data, self.config.k);
-
-        println!("centers: {}", centers.len());
+        let (centers, assignment, radius) = greedy_minimum_maximum(&self.data, self.config.num_clusters);
 
         let mut assignments: Vec<Vec<usize>> = vec![Vec::new(); centers.len()];
 
@@ -132,14 +135,23 @@ where
         Ok(())
     }
 
+    pub fn search_static(&mut self, query: &[T::DataType]) -> Result<Vec<(f32, usize)>> {
+        if let (Some(k), Some(delta)) = (self.config.k, self.config.delta) {
+            self.search(query, k, delta)
+        }else{
+            Err(ClusteredIndexError::ConfigError("This method can be called only if Config has been called with k and delta".to_string()))
+        }
+    }
+
     /// Search for the approximate k nearest neighbors to a query.
     ///
     /// # Parameters
     /// - `query`: A vector of the same type of the dataset representing the query point.
     /// - `k`: Number of neighbours to search for.
     /// - `delta`: Expected recall of the result.
-    pub fn search(&self, query: &[T::DataType], k: usize, delta: f32) -> Result<Vec<(f32, usize)>> {
-        info!("Starting search procedure with parameters k={} and delta={:.2}", k, delta);
+    pub fn search(&mut self, query: &[T::DataType], k: usize, delta: f32) -> Result<Vec<(f32, usize)>> {
+        let start_time = Instant::now();
+        debug!("Starting search procedure with parameters k={} and delta={:.2}", k, delta);
 
         let delta_prime = 1.0 - (1.0 - delta) / (self.clusters.len() as f32);
 
@@ -147,13 +159,21 @@ where
 
         let mut priority_queue = TopKClosestHeap::new(k);
 
+        let mut n_candidates = Vec::new();
+        let mut cluster_timings = Vec::new();
+
         for cluster in sorted_cluster {
-            println!("cluster");
+            let cluster_start = Instant::now();
+
             if let Some(top) = priority_queue.get_top() {
                 if self.data.distance_point(cluster.center_idx, query) - cluster.radius
                     > self.data.distance_point(top, query)
                 {
-                    println!("Bye!");
+                    let total_duration = start_time.elapsed();
+                    if let Some(metrics) = self.metrics.as_mut() {
+                        metrics.log_query(n_candidates, cluster_timings, total_duration);
+                    }
+                    debug!("Search completed in {:?}", total_duration);
                     return Ok(priority_queue.to_list());
                 }
             }
@@ -162,9 +182,10 @@ where
                 .search::<T>(query, k, delta_prime)
                 .map_err(|e| ClusteredIndexError::PuffinnSearchError(e))?;
 
+            // TODO: optimize this
             let mapped_candidates: Vec<usize> = candidates
-                .into_iter()
-                .map(|local_idx| cluster.assignment[local_idx as usize])
+                .iter()
+                .map(|&local_idx| cluster.assignment[local_idx as usize])
                 .collect();
 
             let mut points_added = 0;
@@ -178,13 +199,49 @@ where
                 }
             }
 
-            println!("Added {} points in cluster {}", points_added, cluster.idx);
+            let cluster_duration = cluster_start.elapsed();
+            cluster_timings.push(cluster_duration);
+            
+            debug!("Added {} points in cluster {} (took {:?})", 
+                points_added, cluster.idx, cluster_duration);
+            n_candidates.push(points_added);
         }
+
+        let total_duration = start_time.elapsed();
+        if let Some(metrics) = self.metrics.as_mut() {
+            metrics.log_query(n_candidates, cluster_timings, total_duration);
+        }
+        debug!("Search completed in {:?}", total_duration);
 
         Ok(priority_queue.to_list())
     }
 
+    pub fn enable_metrics(&mut self) -> Result<()> {
+        if let (Some(k), Some(delta)) = (self.config.k, self.config.delta) {
+            self.metrics = Some(RunMetrics::new(
+                self.config.num_clusters,
+                k,
+                delta,
+                self.config.memory_limit,
+            ));
+
+            Ok(())
+        }else{
+            Err(ClusteredIndexError::ConfigError("Metrics can be enabled only with static k and delta".to_string()))
+        }
+    }
+
+    pub fn save_metrics(&self, output_path: String) -> Result<()> {
+        if let Some(metrics) = &self.metrics {
+            metrics
+                .save_to_csv(output_path)
+                .map_err(|e| ClusteredIndexError::ConfigError(format!("Failed to save metrics: {}", e)))?;
+        }
+        Ok(())
+    }
+    
     fn sort_clusters_by_distance(&self, query: &[T::DataType]) -> Vec<ClusterCenter> {
+        // TODO: this clone takes 50% (!) of the total time of the search
         let mut sorted_clusters = self.clusters.clone();
         sorted_clusters.sort_by(|a, b| {
             let dist_a = self.data.distance_point(a.center_idx, query);
