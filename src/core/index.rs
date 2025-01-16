@@ -155,15 +155,17 @@ where
 
         let delta_prime = 1.0 - (1.0 - delta) / (self.clusters.len() as f32);
 
-        let sorted_cluster = self.sort_clusters_by_distance(query);
+        let sorted_cluster = self.sort_cluster_indices_by_distance(query);
 
         let mut priority_queue = TopKClosestHeap::new(k);
 
         let mut n_candidates = Vec::new();
         let mut cluster_timings = Vec::new();
 
-        for cluster in sorted_cluster {
+        for cluster_idx in sorted_cluster {
             let cluster_start = Instant::now();
+
+            let cluster= &self.clusters[cluster_idx];
 
             if let Some(top) = priority_queue.get_top() {
                 if self.data.distance_point(cluster.center_idx, query) - cluster.radius
@@ -182,11 +184,7 @@ where
                 .search::<T>(query, k, delta_prime)
                 .map_err(|e| ClusteredIndexError::PuffinnSearchError(e))?;
 
-            // TODO: optimize this
-            let mapped_candidates: Vec<usize> = candidates
-                .iter()
-                .map(|&local_idx| cluster.assignment[local_idx as usize])
-                .collect();
+            let mapped_candidates: Vec<usize> = self.map_candidates(&candidates, &cluster);
 
             let mut points_added = 0;
             for p in mapped_candidates {
@@ -240,16 +238,27 @@ where
         Ok(())
     }
     
-    fn sort_clusters_by_distance(&self, query: &[T::DataType]) -> Vec<ClusterCenter> {
-        // TODO: this clone takes 50% (!) of the total time of the search
-        let mut sorted_clusters = self.clusters.clone();
-        sorted_clusters.sort_by(|a, b| {
-            let dist_a = self.data.distance_point(a.center_idx, query);
-            let dist_b = self.data.distance_point(b.center_idx, query);
-            dist_a
-                .partial_cmp(&dist_b)
-                .unwrap_or(std::cmp::Ordering::Equal)
+    fn sort_cluster_indices_by_distance(&self, query: &[T::DataType]) -> Vec<usize> {
+        let mut cluster_distances: Vec<(usize, f32)> = self.clusters
+            .iter()
+            .enumerate()
+            .map(|(i, cluster)| {
+                let dist = self.data.distance_point(cluster.center_idx, query);
+                (i, dist)
+            })
+            .collect();
+    
+        cluster_distances.sort_by(|&(_, dist_a), &(_, dist_b)| {
+            dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
         });
-        sorted_clusters
+    
+        cluster_distances.into_iter().map(|(i, _)| i).collect()
+    }
+
+    fn map_candidates(&self, candidates: &Vec<u32>, cluster: &ClusterCenter) -> Vec<usize> {
+        (*candidates)
+            .iter()
+            .map(|&local_idx| cluster.assignment[local_idx as usize])
+            .collect()
     }
 }
