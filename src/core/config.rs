@@ -10,10 +10,10 @@ pub struct Config {
     pub num_clusters: usize,
 
     /// Number of nearest neighbors to search
-    pub k: Option<usize>,
+    pub k: usize,
 
     /// Recall
-    pub delta: Option<f32>,
+    pub delta: f32,
 }
 
 impl Default for Config {
@@ -21,8 +21,8 @@ impl Default for Config {
         Self { 
             memory_limit: 1073741824,   // 1 Gb 
             num_clusters: 5,
-            k: None, 
-            delta: None
+            k: 10, 
+            delta: 0.9
         }
     }
 }
@@ -31,8 +31,8 @@ impl Config {
     pub fn new(
         memory_limit: usize,
         num_clusters: usize,
-        k: Option<usize>,
-        delta: Option<f32>
+        k: usize,
+        delta: f32
     ) -> Self {
         Self{
             memory_limit,
@@ -66,7 +66,7 @@ mod tests {
 
     #[test]
     fn test_new_config() {
-        let config = Config::new(2048, 10, None, None);
+        let config = Config::new(2048, 10, 10, 0.9);
         
         // Check custom values
         assert_eq!(config.memory_limit, 2048);
@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn test_validate_valid_config() {
-        let config = Config::new(2048, 10, None, None);
+        let config = Config::new(2048, 10, 10, 0.9);
         
         // Validate should succeed for valid config
         assert!(config.validate().is_ok());
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_validate_invalid_config() {
-        let config = Config::new(2048, 1, None, None);
+        let config = Config::new(2048, 1, 10, 0.9);
         
         // Validate should fail when k < 2
         let result = config.validate();
@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn test_serialize_config() {
-        let config = Config::new(2048, 10, None, None);
+        let config = Config::new(2048, 10, 10, 0.9);
         
         // Check if it can serialize and deserialize
         let serialized = serde_json::to_string(&config).unwrap();

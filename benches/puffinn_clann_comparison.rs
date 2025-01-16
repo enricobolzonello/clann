@@ -1,4 +1,4 @@
-use clann::{build, core::Config, init_with_config, metricdata::AngularData, puffinn_binds::PuffinnIndex, search_static, utils::load_hdf5_dataset};
+use clann::{build, core::Config, init_with_config, metricdata::AngularData, puffinn_binds::PuffinnIndex, search, utils::load_hdf5_dataset};
 use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, PlotConfiguration, AxisScale
 };
@@ -20,8 +20,8 @@ fn compare_implementations(c: &mut Criterion) {
     let config = Config {
         memory_limit: MEMORY_LIMIT,
         num_clusters: 4,
-        k: Some(K),
-        delta: Some(DELTA),
+        k: K,
+        delta: DELTA,
     };
     let mut clustered_index = init_with_config(data, config).unwrap();
     build(&mut clustered_index).unwrap();
@@ -60,7 +60,7 @@ fn compare_implementations(c: &mut Criterion) {
             &query_slice,
             |b, q| {
                 b.iter(|| {
-                    search_static(&mut clustered_index, q).unwrap()
+                    search(&mut clustered_index, q).unwrap()
                 });
             },
         );

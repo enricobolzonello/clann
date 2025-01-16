@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use clann::{build, core::Config, enable_metrics, init_with_config, metricdata::AngularData, save_metrics, search_static, utils::load_hdf5_dataset};
+use clann::{build, core::Config, enable_metrics, init_with_config, metricdata::AngularData, save_metrics, search, utils::load_hdf5_dataset};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 
@@ -20,8 +20,8 @@ fn main() {
     let config = Config{
         memory_limit: 2*1073741824,
         num_clusters: 4,
-        k: Some(10),
-        delta: Some(0.9),
+        k: 10,
+        delta: 0.9,
     };
 
     let mut index = init_with_config(data, config).unwrap();
@@ -47,7 +47,7 @@ fn main() {
     for (i, query) in queries.rows().into_iter().enumerate() {
         let query_start = Instant::now();
         
-        let result = search_static(&mut index, query.as_slice().unwrap()).unwrap();
+        let result = search(&mut index, query.as_slice().unwrap()).unwrap();
         
         let query_time = query_start.elapsed();
         total_search_time += query_time;

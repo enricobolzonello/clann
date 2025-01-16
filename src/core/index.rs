@@ -6,6 +6,7 @@ use log::{debug, info};
 use crate::core::heap::Element;
 use crate::core::{ClusteredIndexError, Config, Result};
 use crate::metricdata::{MetricData, Subset};
+use crate::puffinn_binds::puffinn_index::get_distance_computations;
 use crate::puffinn_binds::IndexableSimilarity;
 use crate::puffinn_binds::PuffinnIndex;
 use crate::utils::metrics::RunMetrics;
@@ -135,32 +136,22 @@ where
         Ok(())
     }
 
-    pub fn search_static(&mut self, query: &[T::DataType]) -> Result<Vec<(f32, usize)>> {
-        if let (Some(k), Some(delta)) = (self.config.k, self.config.delta) {
-            self.search(query, k, delta)
-        }else{
-            Err(ClusteredIndexError::ConfigError("This method can be called only if Config has been called with k and delta".to_string()))
-        }
-    }
-
     /// Search for the approximate k nearest neighbors to a query.
     ///
     /// # Parameters
     /// - `query`: A vector of the same type of the dataset representing the query point.
-    /// - `k`: Number of neighbours to search for.
-    /// - `delta`: Expected recall of the result.
-    pub fn search(&mut self, query: &[T::DataType], k: usize, delta: f32) -> Result<Vec<(f32, usize)>> {
-        let start_time = Instant::now();
-        debug!("Starting search procedure with parameters k={} and delta={:.2}", k, delta);
+    pub fn search(&mut self, query: &[T::DataType]) -> Result<Vec<(f32, usize)>> {
+        if let Some(metrics) = &mut self.metrics {
+            metrics.new_query();
+        }
 
-        let delta_prime = 1.0 - (1.0 - delta) / (self.clusters.len() as f32);
+        debug!("Starting search procedure with parameters k={} and delta={:.2}", self.config.k, self.config.delta);
+
+        let delta_prime = 1.0 - (1.0 - self.config.delta) / (self.clusters.len() as f32);
 
         let sorted_cluster = self.sort_cluster_indices_by_distance(query);
 
-        let mut priority_queue = TopKClosestHeap::new(k);
-
-        let mut n_candidates = Vec::new();
-        let mut cluster_timings = Vec::new();
+        let mut priority_queue = TopKClosestHeap::new(self.config.k);
 
         for cluster_idx in sorted_cluster {
             let cluster_start = Instant::now();
@@ -168,20 +159,27 @@ where
             let cluster= &self.clusters[cluster_idx];
 
             if let Some(top) = priority_queue.get_top() {
+    
+                // log the distance computation
+                if let Some(metrics) = &mut self.metrics {
+                    metrics.add_distance_computation(1);
+                }
+
+                // TODO: this needs to be changed (distance computation can be avoided)
                 if self.data.distance_point(cluster.center_idx, query) - cluster.radius
-                    > self.data.distance_point(top, query)
+                    > top.1
                 {
-                    let total_duration = start_time.elapsed();
-                    if let Some(metrics) = self.metrics.as_mut() {
-                        metrics.log_query(n_candidates, cluster_timings, total_duration);
+                    // log the distance computations of puffinn
+                    if let Some(metrics) = &mut self.metrics {
+                        metrics.add_distance_computation(get_distance_computations() as usize);
                     }
-                    debug!("Search completed in {:?}", total_duration);
+
                     return Ok(priority_queue.to_list());
                 }
             }
 
             let candidates: Vec<u32> = self.puffinn_indices[cluster.idx]
-                .search::<T>(query, k, delta_prime)
+                .search::<T>(query, self.config.k, delta_prime)
                 .map_err(|e| ClusteredIndexError::PuffinnSearchError(e))?;
 
             let mapped_candidates: Vec<usize> = self.map_candidates(&candidates, &cluster);
@@ -197,48 +195,44 @@ where
                 }
             }
 
+
             let cluster_duration = cluster_start.elapsed();
-            cluster_timings.push(cluster_duration);
-            
             debug!("Added {} points in cluster {} (took {:?})", 
                 points_added, cluster.idx, cluster_duration);
-            n_candidates.push(points_added);
+
+            if let Some(metrics) = &mut self.metrics {
+                metrics.log_n_candidates(points_added);
+                metrics.log_cluster_time(cluster_duration);
+            }
         }
 
-        let total_duration = start_time.elapsed();
-        if let Some(metrics) = self.metrics.as_mut() {
-            metrics.log_query(n_candidates, cluster_timings, total_duration);
+        // log the distance computations of puffinn
+        if let Some(metrics) = &mut self.metrics {
+            metrics.add_distance_computation(get_distance_computations() as usize);
         }
-        debug!("Search completed in {:?}", total_duration);
 
         Ok(priority_queue.to_list())
     }
 
     pub fn enable_metrics(&mut self) -> Result<()> {
-        if let (Some(k), Some(delta)) = (self.config.k, self.config.delta) {
-            self.metrics = Some(RunMetrics::new(
-                self.config.num_clusters,
-                k,
-                delta,
-                self.config.memory_limit,
-            ));
 
-            Ok(())
-        }else{
-            Err(ClusteredIndexError::ConfigError("Metrics can be enabled only with static k and delta".to_string()))
-        }
+        self.metrics = Some(
+            RunMetrics::new()
+        );
+
+        Ok(())
     }
 
     pub fn save_metrics(&self, output_path: String) -> Result<()> {
         if let Some(metrics) = &self.metrics {
             metrics
-                .save_to_csv(output_path)
+                .save_to_csv(output_path, &self.config)
                 .map_err(|e| ClusteredIndexError::ConfigError(format!("Failed to save metrics: {}", e)))?;
         }
         Ok(())
     }
     
-    fn sort_cluster_indices_by_distance(&self, query: &[T::DataType]) -> Vec<usize> {
+    fn sort_cluster_indices_by_distance(&mut self, query: &[T::DataType]) -> Vec<usize> {
         let mut cluster_distances: Vec<(usize, f32)> = self.clusters
             .iter()
             .enumerate()
@@ -247,6 +241,13 @@ where
                 (i, dist)
             })
             .collect();
+
+        // TODO: we can remove some distance computations from the main loop
+        // since we compute each distance from the center to the query we dont actually 
+        // need to redo it in the exit condition
+        if let Some(metrics) = &mut self.metrics {
+            metrics.add_distance_computation(cluster_distances.len());
+        }
     
         cluster_distances.sort_by(|&(_, dist_a), &(_, dist_b)| {
             dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)

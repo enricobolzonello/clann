@@ -47,3 +47,6 @@ unsafe extern "C" {
         dimension: cty::c_int,
     ) -> *mut u32;
 }
+unsafe extern "C" {
+    pub fn CPUFFINN_get_distance_computations() -> cty::c_uint;
+}

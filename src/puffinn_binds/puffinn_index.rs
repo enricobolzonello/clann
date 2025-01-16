@@ -1,5 +1,5 @@
 use super::puffinn_bindings::{
-    CPUFFINN_index_create, CPUFFINN_index_rebuild, CPUFFINN,
+    CPUFFINN_get_distance_computations, CPUFFINN_index_create, CPUFFINN_index_rebuild, CPUFFINN
 };
 use super::puffinn_types::IndexableSimilarity;
 use crate::metricdata::MetricData;
@@ -72,6 +72,12 @@ impl PuffinnIndex {
             Ok(results)
             
         }
+    }
+}
+
+pub fn get_distance_computations() -> u32 {
+    unsafe{
+        CPUFFINN_get_distance_computations()
     }
 }
 

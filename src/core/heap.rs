@@ -35,12 +35,12 @@ impl TopKClosestHeap {
         true
     }
 
-    pub fn get_top(&self) -> Option<usize> {
+    pub fn get_top(&self) -> Option<(usize, f32)> {
         if self.heap.len() == self.length {
             // Find the minimum element in the heap
             self.heap.iter()
                 .min_by_key(|e| e.distance)
-                .map(|e| e.point_index)
+                .map(|e| (e.point_index, e.distance.0))
         } else {
             None
         }
@@ -149,14 +149,14 @@ mod tests {
             point_index: 2,
         });
 
-        assert_eq!(heap.get_top(), Some(2));
+        assert_eq!(heap.get_top(), Some((2,1.0)));
 
         heap.add(Element {
             distance: OrderedFloat(0.5),
             point_index: 3,
         });
 
-        assert_eq!(heap.get_top(), Some(3));
+        assert_eq!(heap.get_top(), Some((3,0.5)));
     }
 
     #[test]

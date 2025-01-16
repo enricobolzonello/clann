@@ -52,4 +52,8 @@ extern "C" {
         std::copy(result.begin(), result.end(), c_result);
         return c_result;
     }
+
+    unsigned int CPUFFINN_get_distance_computations() {
+        return puffinn::g_performance_metrics.get_distance_computations();
+    }
 }

@@ -3,73 +3,59 @@ use std::time::Duration;
 use chrono::Local;
 use csv::Writer;
 
+use crate::core::Config;
+
 pub struct QueryMetrics {
-    idx: usize,
     n_candidates: Vec<usize>,
     cluster_timings: Vec<Duration>,
-    total_duration: Duration,
+    distance_computations: usize,
 }
 
 pub struct RunMetrics {
-    // parameters
-    num_clusters: usize,
-    k: usize,
-    delta: f32,
-    total_memory: usize,
-
     // run data
     queries: Vec<QueryMetrics>,
-
-    // helpers
-    last_query_idx: usize,
 }
 
 impl QueryMetrics {
     pub fn new(
-        idx: usize, 
-        n_candidates: Vec<usize>,
-        cluster_timings: Vec<Duration>,
-        total_duration: Duration
     ) -> Self {
         Self { 
-            idx, 
-            n_candidates,
-            cluster_timings,
-            total_duration,
+            n_candidates: Vec::new(),
+            cluster_timings: Vec::new(),
+            distance_computations: 0
         }
     }
 }
 
 impl RunMetrics {
-    pub fn new(num_clusters: usize, k: usize, delta: f32, total_memory: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            num_clusters,
-            k,
-            delta,
-            total_memory,
             queries: Vec::new(),
-            last_query_idx: 0,
         }
     }
 
-    pub fn log_query(
-        &mut self, 
-        n_candidates: Vec<usize>,
-        cluster_timings: Vec<Duration>,
-        total_duration: Duration
-    ) {
-        let query_metrics = QueryMetrics::new(
-            self.last_query_idx,
-            n_candidates,
-            cluster_timings,
-            total_duration
-        );
-
-        self.queries.push(query_metrics);
-        self.last_query_idx += 1;
+    pub fn new_query(&mut self) {
+        self.queries.push(QueryMetrics::new());
     }
 
-    pub fn save_to_csv(&self, output_path: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn current_query_mut(&mut self) -> &mut QueryMetrics {
+        let n = self.queries.len();
+        &mut self.queries[n - 1]
+    }
+
+    pub fn log_n_candidates(&mut self, n_candidates: usize) {
+        self.current_query_mut().n_candidates.push(n_candidates);
+    }
+
+    pub fn log_cluster_time(&mut self, time: Duration) {
+        self.current_query_mut().cluster_timings.push(time);
+    }
+
+    pub fn add_distance_computation(&mut self, n_comp: usize) {
+        self.current_query_mut().distance_computations += n_comp;
+    }
+
+    pub fn save_to_csv(&self, output_path: String, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         if self.queries.is_empty() {
             return Err("There is no query data to save".into());
         }
@@ -88,16 +74,16 @@ impl RunMetrics {
 
         // Write parameters as metadata
         writer
-            .write_record(&["param", "total_clusters", &self.num_clusters.to_string(), "-1", "-1"])
+            .write_record(&["param", "total_clusters", &config.num_clusters.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
         writer
-            .write_record(&["param", "K", &self.k.to_string(), "-1", "-1"])
+            .write_record(&["param", "K", &config.k.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
         writer
-            .write_record(&["param", "delta", &self.delta.to_string(), "-1", "-1"])
+            .write_record(&["param", "delta", &config.delta.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
         writer
-            .write_record(&["param", "total_memory", &self.total_memory.to_string(), "-1", "-1"])
+            .write_record(&["param", "total_memory", &config.memory_limit.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
 
         // Write header
@@ -106,21 +92,21 @@ impl RunMetrics {
                 "query",
                 "cluster_idx",
                 "n_candidates",
-                "cluster_duration_ms",
-                "total_duration_ms"
+                "cluster_duration_μs",
+                "total_distances_computed"
             ])
             .map_err(|e| format!("Failed to write header to {}: {}", filepath, e))?;
 
         // Write query data
-        for query in &self.queries {
+        for (query_idx, query) in (&self.queries).into_iter().enumerate() {
             for idx in 0..query.n_candidates.len() {
                 writer
                     .write_record(&[
-                        query.idx.to_string(),
+                        query_idx.to_string(),
                         idx.to_string(),
                         query.n_candidates[idx].to_string(),
-                        query.cluster_timings[idx].as_nanos().to_string(),
-                        query.total_duration.as_nanos().to_string(),
+                        query.cluster_timings[idx].as_micros().to_string(),
+                        query.distance_computations.to_string(),
                     ])
                     .map_err(|e| format!("Failed to write query data to {}: {}", filepath, e))?;
             }
@@ -132,5 +118,30 @@ impl RunMetrics {
             .map_err(|e| format!("Failed to flush writer for {}: {}", filepath, e))?;
 
         Ok(())
+    }
+
+    pub fn print_summary(&self) {
+        println!("\nMetrics Summary:");
+        println!("Total queries: {}", self.queries.len());
+        
+        if !self.queries.is_empty() {
+            let total_computations: usize = self.queries
+                .iter()
+                .map(|q| q.distance_computations)
+                .sum();
+            
+            let total_time: f64 = self.queries
+                .iter()
+                .flat_map(|q| q.cluster_timings.iter())
+                .sum::<Duration>()
+                .as_secs_f64() * 1000.0;
+
+            println!("Total distance computations: {}", total_computations);
+            println!("Average computations per query: {:.2}", 
+                total_computations as f64 / self.queries.len() as f64);
+            println!("Total clustering time: {:.2}ms", total_time);
+            println!("Average time per query: {:.2}ms", 
+                total_time / self.queries.len() as f64);
+        }
     }
 }

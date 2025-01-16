@@ -38,20 +38,12 @@ where
     index.build()
 }
 
-pub fn search<T>(index: &mut ClusteredIndex<T>, query: &[T::DataType], k: usize, delta: f32) -> Result<Vec<(f32, usize)>>
+pub fn search<T>(index: &mut ClusteredIndex<T>, query: &[T::DataType]) -> Result<Vec<(f32, usize)>>
 where
     T: MetricData + IndexableSimilarity<T> + Subset,
     <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
 {
-    index.search(query, k, delta)
-}
-
-pub fn search_static<T>(index: &mut ClusteredIndex<T>, query: &[T::DataType]) -> Result<Vec<(f32, usize)>>
-where
-    T: MetricData + IndexableSimilarity<T> + Subset,
-    <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
-{
-    index.search_static(query)
+    index.search(query)
 }
 
 pub fn enable_metrics<T>(index: &mut ClusteredIndex<T>) -> Result<()>
