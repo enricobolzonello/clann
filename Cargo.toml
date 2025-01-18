@@ -25,7 +25,11 @@ bindgen = "0.71.1"
 cc = { version = "1.2.7", features = ["parallel"] }
 
 [[bench]]
-name = "bench"
+name = "distance_benches"
+harness = false
+
+[[bench]]
+name = "time_benches"
 harness = false
 
 [profile.release]

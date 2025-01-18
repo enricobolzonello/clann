@@ -8,12 +8,13 @@ use clann::{
     utils::load_hdf5_dataset,
 };
 use criterion::{
-    AxisScale, BenchmarkId, Criterion, PlotConfiguration
+    criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion, PlotConfiguration
 };
 use rand::{seq::SliceRandom, thread_rng};
+use utils::{create_progress_bar, print_benchmark_header, CONFIGS, DATASET_PATH};
 use std::time::Duration;
 
-use crate::utils::CONFIGS;
+mod utils;
 
 pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
     // Configure benchmark group
@@ -93,3 +94,22 @@ pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
         group.finish();
     }
 }
+
+pub fn run_time_benchmarks(c: &mut Criterion) {
+    print_benchmark_header("PUFFINN-CLANN Time Comparison");
+    let pb = create_progress_bar("Running time comparison".to_string(), 100);
+    compare_implementations_time(c, DATASET_PATH);
+    pb.finish_with_message("Time Comparison complete");
+}
+
+criterion_group! {
+    name = time_benches;
+    config = Criterion::default()
+        .configure_from_args()
+        .sample_size(10)
+        .measurement_time(std::time::Duration::from_secs(5))
+        .warm_up_time(std::time::Duration::from_secs(1));
+    targets = run_time_benchmarks
+}
+
+criterion_main!(time_benches);

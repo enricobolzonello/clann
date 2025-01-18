@@ -3,10 +3,11 @@ use clann::{
     build, init_with_config, metricdata::AngularData, puffinn_binds::PuffinnIndex,
     search, utils::load_hdf5_dataset,
 };
-use criterion::Criterion;
+use criterion::{criterion_group, criterion_main, Criterion};
 use rand::{seq::SliceRandom, thread_rng};
+use utils::{create_progress_bar, print_benchmark_header, CONFIGS, DATASET_PATH};
 
-use crate::utils::CONFIGS;
+mod utils;
 
 pub fn compare_implementations_distance(_c: &Criterion, dataset_path: &str) {
     // Load dataset
@@ -62,3 +63,19 @@ pub fn compare_implementations_distance(_c: &Criterion, dataset_path: &str) {
         }
     }
 }
+
+pub fn run_distance_benchmarks(c: &mut Criterion) {
+    print_benchmark_header("PUFFINN-CLANN Distance Computations Comparison");
+    let pb = create_progress_bar("Running distance comparison".to_string(), 100);
+    compare_implementations_distance(c, DATASET_PATH);
+    pb.finish_with_message("Distance Comparison complete");
+}
+
+criterion_group! {
+    name = distance_benches;
+    config = Criterion::default()
+        .configure_from_args();
+    targets = run_distance_benchmarks
+}
+
+criterion_main!(distance_benches);
