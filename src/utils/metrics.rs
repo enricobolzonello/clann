@@ -8,12 +8,12 @@ use crate::core::Config;
 pub struct QueryMetrics {
     n_candidates: Vec<usize>,
     cluster_timings: Vec<Duration>,
-    distance_computations: usize,
+    pub distance_computations: usize,
 }
 
 pub struct RunMetrics {
     // run data
-    queries: Vec<QueryMetrics>,
+    pub queries: Vec<QueryMetrics>,
 }
 
 impl QueryMetrics {
@@ -41,6 +41,11 @@ impl RunMetrics {
     pub fn current_query_mut(&mut self) -> &mut QueryMetrics {
         let n = self.queries.len();
         &mut self.queries[n - 1]
+    }
+
+    pub fn current_query(&self) -> &QueryMetrics {
+        let n = self.queries.len();
+        &self.queries[n - 1]
     }
 
     pub fn log_n_candidates(&mut self, n_candidates: usize) {

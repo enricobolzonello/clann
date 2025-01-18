@@ -25,7 +25,7 @@ bindgen = "0.71.1"
 cc = { version = "1.2.7", features = ["parallel"] }
 
 [[bench]]
-name = "puffinn_clann_comparison"
+name = "bench"
 harness = false
 
 [profile.release]

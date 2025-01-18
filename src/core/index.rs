@@ -31,7 +31,7 @@ where
     clusters: Vec<ClusterCenter>,
     config: Config,
     puffinn_indices: Vec<PuffinnIndex>,
-    metrics: Option<RunMetrics>,
+    pub metrics: Option<RunMetrics>,
 }
 
 impl<T> ClusteredIndex<T>
