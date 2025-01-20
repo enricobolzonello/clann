@@ -1,0 +1,20 @@
+[
+    {
+        "memory_limit": 1073741824,
+        "num_clusters": 4,
+        "k": 10,
+        "delta": 0.9
+    },
+    {
+        "memory_limit": 1073741824,
+        "num_clusters": 8,
+        "k": 10,
+        "delta": 0.9
+    },
+    {
+        "memory_limit": 1073741824,
+        "num_clusters": 12,
+        "k": 10,
+        "delta": 0.9
+    }
+]

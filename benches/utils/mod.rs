@@ -1,28 +1,18 @@
+use std::{fs::File, io::{self, Read}};
+
 use clann::core::Config;
 use indicatif::{ProgressBar, ProgressStyle};
 
-pub const CONFIGS: &[Config] = &[
-    Config {
-        memory_limit: 1 * 1024 * 1024 * 1024, // 1GB
-        num_clusters: 4,
-        k: 10,
-        delta: 0.9,
-    },
-    Config {
-        memory_limit: 1 * 1024 * 1024 * 1024,
-        num_clusters: 8,
-        k: 10,
-        delta: 0.9,
-    },
-    Config {
-        memory_limit: 1 * 1024 * 1024 * 1024, 
-        num_clusters: 12,
-        k: 10,
-        delta: 0.9,
-    },
-];
+pub const DATASET_PATH: &str = "./datasets/glove-25-angular.hdf5";
 
-pub const DATASET_PATH: &str = "/home/bolzo/puffinn-tests/datasets/glove-25-angular.hdf5";
+pub fn load_configs_from_file(path: &str) -> io::Result<Vec<Config>> {
+    let mut file = File::open(path)?;
+    let mut json = String::new();
+    file.read_to_string(&mut json)?;
+    let configs: Vec<Config> = serde_json::from_str(&json)?;
+    Ok(configs)
+}
+
 
 pub fn print_benchmark_header(name: &str) {
     println!("\n{}", "╔═══════════════════════════════════════════════════════════════╗");

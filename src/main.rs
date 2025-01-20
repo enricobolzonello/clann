@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use clann::{build, core::Config, enable_metrics, init_with_config, metricdata::AngularData, save_metrics, search, utils::load_hdf5_dataset};
+use clann::{build, core::Config, enable_metrics, init_with_config, metricdata::AngularData, save_metrics, search, utils::{get_recall_values, load_hdf5_dataset}};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 
@@ -12,13 +12,13 @@ fn main() {
     info!("Starting search benchmark");
     let total_start = Instant::now();
 
-    const OUTPUT_PATH: &str = "/home/bolzo/puffinn-tests/output";
+    const OUTPUT_PATH: &str = "./runs";
 
-    let (data_raw, queries) = load_hdf5_dataset("/home/bolzo/puffinn-tests/datasets/glove-25-angular.hdf5").unwrap();
+    let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
     let data = AngularData::new(data_raw);
 
     let config = Config{
-        memory_limit: 2*1073741824,
+        memory_limit: 1*1073741824,
         num_clusters: 4,
         k: 10,
         delta: 0.9,
@@ -73,11 +73,15 @@ fn main() {
     progress_bar.finish_with_message("Search complete");
     
     let total_search_time = search_start.elapsed();
+
+    let (recall_mean, recall_std, _) = get_recall_values(&ground_truth_distances, &distance_results, 10);
+
     info!("All queries processed in {:?}", total_search_time);
     info!("Average query time: {:?}", total_search_time / queries.nrows() as u32);
     info!("Min query time: {:?}", min_search_time);
     info!("Max query time: {:?}", max_search_time);
     info!("Total results: {}", distance_results.len());
+    info!("Recall mean {:.2} with std {:.2}", recall_mean, recall_std);
 
     // Save metrics
     info!("Saving metrics to {}", OUTPUT_PATH);

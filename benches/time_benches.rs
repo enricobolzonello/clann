@@ -11,17 +11,16 @@ use criterion::{
     criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion, PlotConfiguration
 };
 use rand::{seq::SliceRandom, thread_rng};
-use utils::{create_progress_bar, print_benchmark_header, CONFIGS, DATASET_PATH};
+use utils::{create_progress_bar, load_configs_from_file, print_benchmark_header, DATASET_PATH};
 use std::time::Duration;
 
 mod utils;
 
 pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
-    // Configure benchmark group
-    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+    let configs = load_configs_from_file("configs.json").unwrap();
 
-    // Load dataset
-    let (data_raw, queries) = load_hdf5_dataset(dataset_path).unwrap();
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+    let (data_raw, queries, _) = load_hdf5_dataset(dataset_path).unwrap();
 
     // Select a subset of queries for benchmarking
     let num_queries = queries.nrows();
@@ -32,7 +31,7 @@ pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
         .cloned()
         .collect();
 
-    for (config_idx, config) in CONFIGS.iter().enumerate() {
+    for (config_idx, config) in configs.iter().enumerate() {
         let data = AngularData::new(data_raw.clone());
 
         // Initialize base PUFFINN index
@@ -48,7 +47,6 @@ pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
         let mut clustered_index = init_with_config(data, clann_config).unwrap();
         build(&mut clustered_index).unwrap();
 
-        // Create group name based on configuration
         let group_name = format!(
             "config_{}_clusters_{}_mem_{}_dataset_{}",
             config_idx,
