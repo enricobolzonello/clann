@@ -9,6 +9,9 @@ pub struct QueryMetrics {
     n_candidates: Vec<usize>,
     cluster_timings: Vec<Duration>,
     pub distance_computations: usize,
+    // TODO
+    // cluster size
+    // cluster distance computations
 }
 
 pub struct RunMetrics {
@@ -79,21 +82,21 @@ impl RunMetrics {
 
         // Write parameters as metadata
         writer
-            .write_record(&["param", "total_clusters", &config.num_clusters.to_string(), "-1", "-1"])
+            .write_record(["param", "total_clusters", &config.num_clusters.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
         writer
-            .write_record(&["param", "K", &config.k.to_string(), "-1", "-1"])
+            .write_record(["param", "K", &config.k.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
         writer
-            .write_record(&["param", "delta", &config.delta.to_string(), "-1", "-1"])
+            .write_record(["param", "delta", &config.delta.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
         writer
-            .write_record(&["param", "total_memory", &config.memory_limit.to_string(), "-1", "-1"])
+            .write_record(["param", "total_memory", &config.memory_limit.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
 
         // Write header
         writer
-            .write_record(&[
+            .write_record([
                 "query",
                 "cluster_idx",
                 "n_candidates",
@@ -103,10 +106,10 @@ impl RunMetrics {
             .map_err(|e| format!("Failed to write header to {}: {}", filepath, e))?;
 
         // Write query data
-        for (query_idx, query) in (&self.queries).into_iter().enumerate() {
+        for (query_idx, query) in (&self.queries).iter().enumerate() {
             for idx in 0..query.n_candidates.len() {
                 writer
-                    .write_record(&[
+                    .write_record([
                         query_idx.to_string(),
                         idx.to_string(),
                         query.n_candidates[idx].to_string(),

@@ -17,7 +17,7 @@ use std::time::Duration;
 mod utils;
 
 pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
-    let configs = load_configs_from_file("configs.json").unwrap();
+    let configs = load_configs_from_file("benches/configs.json").unwrap();
 
     let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
     let (data_raw, queries, _) = load_hdf5_dataset(dataset_path).unwrap();

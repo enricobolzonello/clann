@@ -37,7 +37,7 @@ impl TopKClosestHeap {
 
     pub fn get_top(&self) -> Option<(usize, f32)> {
         if self.heap.len() == self.length {
-            // Find the minimum element in the heap
+            
             self.heap.iter()
                 .min_by_key(|e| e.distance)
                 .map(|e| (e.point_index, e.distance.0))

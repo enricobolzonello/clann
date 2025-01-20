@@ -96,7 +96,7 @@ where
         self.clusters = centers
             .iter()
             .zip(radius.iter())
-            .zip(assignments.into_iter())
+            .zip(assignments)
             .enumerate()
             .map(|(idx, ((&center_idx, &radius), assignment_indexes))| ClusterCenter {
                 idx,
@@ -125,7 +125,7 @@ where
             // TODO: i dont like the clone
             let index_data = self.data.subset(cluster.assignment.clone());
             let puffinn_index = PuffinnIndex::new(&index_data, cluster_memory_limit)
-                .map_err(|e| ClusteredIndexError::PuffinnCreationError(e))?;
+                .map_err(ClusteredIndexError::PuffinnCreationError)?;
 
             info!("Cluster {} puffinn index built", cluster.center_idx);
 
@@ -180,9 +180,9 @@ where
 
             let candidates: Vec<u32> = self.puffinn_indices[cluster.idx]
                 .search::<T>(query, self.config.k, delta_prime)
-                .map_err(|e| ClusteredIndexError::PuffinnSearchError(e))?;
+                .map_err(ClusteredIndexError::PuffinnSearchError)?;
 
-            let mapped_candidates: Vec<usize> = self.map_candidates(&candidates, &cluster);
+            let mapped_candidates: Vec<usize> = self.map_candidates(&candidates, cluster);
 
             let mut points_added = 0;
             for p in mapped_candidates {

@@ -17,17 +17,17 @@ pub fn export_to_csv(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut file = File::create(output_path)?;
     
-    writeln!(file, "config_id,method,value")?;
+    writeln!(file, "config_id,query_id,method,value")?;
     
     for (config_id, data) in clustered_data.iter().enumerate() {
-        for &value in data {
-            writeln!(file, "{},clustered,{}", config_id, value)?;
+        for (query_id, &value) in data.iter().enumerate() {
+            writeln!(file, "{},{},clustered,{}", config_id, query_id, value)?;
         }
     }
     
     for (config_id, data) in puffinn_data.iter().enumerate() {
-        for &value in data {
-            writeln!(file, "{},puffinn,{}", config_id, value)?;
+        for (query_id, &value) in data.iter().enumerate() {
+            writeln!(file, "{},{},puffinn,{}", config_id, query_id, value)?;
         }
     }
     
@@ -35,7 +35,7 @@ pub fn export_to_csv(
 }
 
 pub fn compare_implementations_distance(dataset_path: &str) {
-    let configs = load_configs_from_file("configs.json").unwrap();
+    let configs = load_configs_from_file("benches/configs.json").unwrap();
 
     let (data_raw, queries, _) = load_hdf5_dataset(dataset_path).expect("Failed to load dataset");
 

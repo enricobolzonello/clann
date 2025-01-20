@@ -1,6 +1,4 @@
-use bindgen;
 use std::path::Path;
-use cc;
 
 fn main() {
     // Define paths and flags

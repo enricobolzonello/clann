@@ -36,7 +36,7 @@ fn threshold(distances: &Array<f32, Ix1>, count: usize, epsilon: f32) -> f32 {
 
 pub fn get_recall_values(
     dataset_distances: &Array<f32, Ix2>,
-    run_distances: &Vec<Vec<f32>>,
+    run_distances: &[Vec<f32>],
     count: usize,
 ) -> (f32, f32, Vec<f32>) {
     let mut recalls = Vec::with_capacity(run_distances.len());
