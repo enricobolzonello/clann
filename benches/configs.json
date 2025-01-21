@@ -1,19 +1,19 @@
 [
     {
-        "memory_limit": 1073741824,
-        "num_clusters": 4,
+        "kb_per_point": 1,
+        "num_clusters_factor": 1,
         "k": 10,
         "delta": 0.9
     },
     {
-        "memory_limit": 1073741824,
-        "num_clusters": 8,
+        "kb_per_point": 1,
+        "num_clusters_factor": 2,
         "k": 10,
         "delta": 0.9
     },
     {
-        "memory_limit": 1073741824,
-        "num_clusters": 12,
+        "kb_per_point": 1,
+        "num_clusters_factor": 3,
         "k": 10,
         "delta": 0.9
     }

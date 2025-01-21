@@ -2,7 +2,7 @@ use clann::{
     build,
     core::Config,
     init_with_config,
-    metricdata::AngularData,
+    metricdata::{AngularData, MetricData},
     puffinn_binds::PuffinnIndex,
     search,
     utils::load_hdf5_dataset,
@@ -35,12 +35,12 @@ pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
         let data = AngularData::new(data_raw.clone());
 
         // Initialize base PUFFINN index
-        let base_index = PuffinnIndex::new(&data, config.memory_limit).unwrap();
+        let base_index = PuffinnIndex::new(&data, config.kb_per_point * data.num_points() * 1024).unwrap();
 
         // Initialize clustered index
         let clann_config = Config {
-            memory_limit: config.memory_limit,
-            num_clusters: config.num_clusters,
+            kb_per_point: config.kb_per_point,
+            num_clusters_factor: config.num_clusters_factor,
             k: config.k,
             delta: config.delta,
         };
@@ -50,8 +50,8 @@ pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
         let group_name = format!(
             "config_{}_clusters_{}_mem_{}_dataset_{}",
             config_idx,
-            config.num_clusters,
-            config.memory_limit / (1024 * 1024 * 1024),
+            config.num_clusters_factor,
+            config.kb_per_point,
             dataset_path.split('/').last().unwrap_or("unknown")
         );
 

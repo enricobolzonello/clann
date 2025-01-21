@@ -1,3 +1,4 @@
+use clann::metricdata::MetricData;
 use clann::puffinn_binds::puffinn_index::get_distance_computations;
 use clann::{
     build, init_with_config, metricdata::AngularData, puffinn_binds::PuffinnIndex,
@@ -52,7 +53,7 @@ pub fn compare_implementations_distance(dataset_path: &str) {
     for (config_idx, config) in configs.iter().enumerate() {
         let data = AngularData::new(data_raw.clone());
 
-        let base_index = PuffinnIndex::new(&data, config.memory_limit).expect("Failed to initialize PUFFINN index");
+        let base_index = PuffinnIndex::new(&data, config.kb_per_point * data.num_points() * 1024).expect("Failed to initialize PUFFINN index");
         let mut clustered_index = init_with_config(data, config.clone()).expect("Failed to initialize clustered index");
         clustered_index.enable_metrics().expect("Failed to enable metrics");
         build(&mut clustered_index).expect("Failed to build clustered index");

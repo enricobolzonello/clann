@@ -82,7 +82,7 @@ impl RunMetrics {
 
         // Write parameters as metadata
         writer
-            .write_record(["param", "total_clusters", &config.num_clusters.to_string(), "-1", "-1"])
+            .write_record(["param", "cluster_factor", &config.num_clusters_factor.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
         writer
             .write_record(["param", "K", &config.k.to_string(), "-1", "-1"])
@@ -91,7 +91,7 @@ impl RunMetrics {
             .write_record(["param", "delta", &config.delta.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
         writer
-            .write_record(["param", "total_memory", &config.memory_limit.to_string(), "-1", "-1"])
+            .write_record(["param", "kb_per_point", &config.kb_per_point.to_string(), "-1", "-1"])
             .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
 
         // Write header

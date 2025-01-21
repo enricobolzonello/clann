@@ -55,7 +55,6 @@ where
     /// let index = ClusteredIndex::new(config, data).unwrap();
     /// ```
     pub fn new(config: Config, data: T) -> Result<Self> {
-        let _ = config.validate().map_err(ClusteredIndexError::ConfigError);
 
         if data.num_points() == 0 {
             return Err(ClusteredIndexError::DataError("empty dataset".to_string()));
@@ -63,7 +62,7 @@ where
 
         info!("Initializing Index with config {:?}", config);
 
-        let k = config.num_clusters;
+        let k = (config.num_clusters_factor as f64 * (data.num_points() as f64).sqrt()).floor() as usize;
 
         Ok(ClusteredIndex {
             data,
@@ -84,8 +83,9 @@ where
     /// index.build();
     /// ```
     pub fn build(&mut self) -> Result<()> {
+        info!("num_clusters: {}", self.clusters.capacity());
         // 1) PERFORM CLUSTERING
-        let (centers, assignment, radius) = greedy_minimum_maximum(&self.data, self.config.num_clusters);
+        let (centers, assignment, radius) = greedy_minimum_maximum(&self.data, self.clusters.capacity());
 
         let mut assignments: Vec<Vec<usize>> = vec![Vec::new(); centers.len()];
 
@@ -113,13 +113,11 @@ where
                 continue;
             }
 
-            let cluster_memory_limit = ((cluster.assignment.len() as f64
-                / self.data.num_points() as f64)
-                * self.config.memory_limit as f64) as usize;
+            let cluster_memory_limit = cluster.assignment.len() * self.config.kb_per_point * 1024;
 
-            debug!(
-                "Cluster {} memory limit {}",
-                cluster.center_idx, cluster_memory_limit
+            info!(
+                "Memory limit {}, points: {}",
+                cluster_memory_limit, cluster.assignment.len()
             );
 
             // TODO: i dont like the clone

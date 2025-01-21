@@ -18,8 +18,8 @@ fn main() {
     let data = AngularData::new(data_raw);
 
     let config = Config{
-        memory_limit: 1*1073741824,
-        num_clusters: 4,
+        kb_per_point: 1,
+        num_clusters_factor: 0.1,
         k: 10,
         delta: 0.9,
     };
