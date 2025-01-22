@@ -1,20 +1,23 @@
 [
     {
         "kb_per_point": 1,
-        "num_clusters_factor": 1,
+        "num_clusters_factor": 0.06,
         "k": 10,
-        "delta": 0.9
+        "delta": 0.9,
+        "dataset_name" : "glove-25-angular"
     },
     {
         "kb_per_point": 1,
-        "num_clusters_factor": 2,
+        "num_clusters_factor": 0.08,
         "k": 10,
-        "delta": 0.9
+        "delta": 0.9,
+        "dataset_name" : "glove-25-angular"
     },
     {
         "kb_per_point": 1,
-        "num_clusters_factor": 3,
+        "num_clusters_factor": 0.1,
         "k": 10,
-        "delta": 0.9
+        "delta": 0.9,
+        "dataset_name" : "glove-25-angular"
     }
 ]

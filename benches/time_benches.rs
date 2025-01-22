@@ -11,16 +11,18 @@ use criterion::{
     criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion, PlotConfiguration
 };
 use rand::{seq::SliceRandom, thread_rng};
-use utils::{create_progress_bar, load_configs_from_file, print_benchmark_header, DATASET_PATH};
+use utils::{create_progress_bar, load_configs_from_file, print_benchmark_header};
 use std::time::Duration;
 
 mod utils;
 
-pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
+pub fn compare_implementations_time(c: &mut Criterion) {
     let configs = load_configs_from_file("benches/configs.json").unwrap();
 
-    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
-    let (data_raw, queries, _) = load_hdf5_dataset(dataset_path).unwrap();
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Linear);
+
+    let dataset_path = format!("./datasets/{}.hdf5", configs[0].dataset_name);      // assume the dataset does not change
+    let (data_raw, queries, _) = load_hdf5_dataset(&dataset_path).unwrap();
 
     // Select a subset of queries for benchmarking
     let num_queries = queries.nrows();
@@ -43,6 +45,7 @@ pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
             num_clusters_factor: config.num_clusters_factor,
             k: config.k,
             delta: config.delta,
+            dataset_name: config.dataset_name.clone(),
         };
         let mut clustered_index = init_with_config(data, clann_config).unwrap();
         build(&mut clustered_index).unwrap();
@@ -96,7 +99,7 @@ pub fn compare_implementations_time(c: &mut Criterion, dataset_path: &str) {
 pub fn run_time_benchmarks(c: &mut Criterion) {
     print_benchmark_header("PUFFINN-CLANN Time Comparison");
     let pb = create_progress_bar("Running time comparison".to_string(), 100);
-    compare_implementations_time(c, DATASET_PATH);
+    compare_implementations_time(c);
     pb.finish_with_message("Time Comparison complete");
 }
 

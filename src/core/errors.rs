@@ -10,6 +10,9 @@ pub enum ClusteredIndexError {
     #[error("Data Error: {0}")]
     DataError(String),
 
+    #[error("Result DB Error: {0}")]
+    ResultDBError(String),
+
     #[error("Invalid Assignment: {0} not found")]
     InvalidAssignment(usize),
 

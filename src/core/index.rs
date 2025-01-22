@@ -1,7 +1,10 @@
-use std::time::Instant;
+use std::fs;
+use std::time::{Duration, Instant};
 
+use ndarray::{Array, Ix2};
 use ordered_float::OrderedFloat;
-use log::{debug, info};
+use log::{debug, info, warn};
+use rusqlite::Connection;
 
 use crate::core::heap::Element;
 use crate::core::{ClusteredIndexError, Config, Result};
@@ -9,16 +12,16 @@ use crate::metricdata::{MetricData, Subset};
 use crate::puffinn_binds::puffinn_index::get_distance_computations;
 use crate::puffinn_binds::IndexableSimilarity;
 use crate::puffinn_binds::PuffinnIndex;
-use crate::utils::metrics::RunMetrics;
+use crate::utils::metrics::{MetricsGranularity, RunMetrics};
 
 use super::gmm::greedy_minimum_maximum;
 use super::heap::TopKClosestHeap;
 
 #[derive(Clone)]
 struct ClusterCenter {
-    pub idx: usize, // index of the cluster, corresponds to the index of the vec of puffinn indexes
-    pub center_idx: usize, // index in the dataset for the center point
-    pub radius: f32, // radius of the cluster
+    pub idx: usize,             // index of the cluster, corresponds to the index of the vec of puffinn indexes
+    pub center_idx: usize,      // index in the dataset for the center point
+    pub radius: f32,            // radius of the cluster
     pub assignment: Vec<usize>, // vector of indices in the dataset
 }
 
@@ -113,9 +116,13 @@ where
                 continue;
             }
 
+            if let Some(metrics) = &mut self.metrics {
+                metrics.log_cluster_size(cluster.assignment.len());
+            }
+
             let cluster_memory_limit = cluster.assignment.len() * self.config.kb_per_point * 1024;
 
-            info!(
+            debug!(
                 "Memory limit {}, points: {}",
                 cluster_memory_limit, cluster.assignment.len()
             );
@@ -124,8 +131,6 @@ where
             let index_data = self.data.subset(cluster.assignment.clone());
             let puffinn_index = PuffinnIndex::new(&index_data, cluster_memory_limit)
                 .map_err(ClusteredIndexError::PuffinnCreationError)?;
-
-            info!("Cluster {} puffinn index built", cluster.center_idx);
 
             // Store the Puffinn index
             self.puffinn_indices.push(puffinn_index);
@@ -150,6 +155,7 @@ where
         let sorted_cluster = self.sort_cluster_indices_by_distance(query);
 
         let mut priority_queue = TopKClosestHeap::new(self.config.k);
+        let mut distance_computations = 0;
 
         for cluster_idx in sorted_cluster {
             let cluster_start = Instant::now();
@@ -159,17 +165,17 @@ where
             if let Some(top) = priority_queue.get_top() {
     
                 // log the distance computation
-                if let Some(metrics) = &mut self.metrics {
-                    metrics.add_distance_computation(1);
-                }
+                distance_computations += 1;
 
                 // TODO: this needs to be changed (distance computation can be avoided)
                 if self.data.distance_point(cluster.center_idx, query) - cluster.radius
                     > top.1
                 {
                     // log the distance computations of puffinn
+                    distance_computations += get_distance_computations() as usize;
                     if let Some(metrics) = &mut self.metrics {
-                        metrics.add_distance_computation(get_distance_computations() as usize);
+                        metrics.add_distance_computation_cluster(distance_computations);
+                        metrics.log_cluster_time(cluster_start.elapsed());
                     }
 
                     return Ok(priority_queue.to_list());
@@ -193,20 +199,15 @@ where
                 }
             }
 
+            debug!("Added {} points in cluster {})", 
+                points_added, cluster.idx);
 
-            let cluster_duration = cluster_start.elapsed();
-            debug!("Added {} points in cluster {} (took {:?})", 
-                points_added, cluster.idx, cluster_duration);
-
+            distance_computations += get_distance_computations() as usize;
             if let Some(metrics) = &mut self.metrics {
                 metrics.log_n_candidates(points_added);
-                metrics.log_cluster_time(cluster_duration);
+                metrics.log_cluster_time(cluster_start.elapsed());
+                metrics.add_distance_computation_cluster(distance_computations);
             }
-        }
-
-        // log the distance computations of puffinn
-        if let Some(metrics) = &mut self.metrics {
-            metrics.add_distance_computation(get_distance_computations() as usize);
         }
 
         Ok(priority_queue.to_list())
@@ -215,18 +216,40 @@ where
     pub fn enable_metrics(&mut self) -> Result<()> {
 
         self.metrics = Some(
-            RunMetrics::new()
+            RunMetrics::new(self.config.clone())
         );
 
         Ok(())
     }
 
-    pub fn save_metrics(&self, output_path: String) -> Result<()> {
-        if let Some(metrics) = &self.metrics {
-            metrics
-                .save_to_csv(output_path, &self.config)
-                .map_err(|e| ClusteredIndexError::ConfigError(format!("Failed to save metrics: {}", e)))?;
+    pub fn save_metrics(&mut self, 
+        db_path: String,
+        granularity: MetricsGranularity,
+        dataset_distances: &Array<f32, Ix2>,
+        run_distances: &[Vec<f32>],
+        dataset_len: usize,
+        total_search_time: &Duration,
+    ) -> Result<()> {        
+        if !Self::db_exists(&db_path) {         
+            eprintln!("No existing database in path {}", db_path);
         }
+        
+        // Connect to the database
+        let conn_res = Connection::open(db_path).map_err(|e| ClusteredIndexError::ResultDBError(e.to_string()));
+
+        match conn_res {
+            Ok(mut conn) => {
+                if let Some(metrics) = &mut self.metrics {
+                    metrics.compute_run_statistics(dataset_distances, run_distances, dataset_len, total_search_time);
+                    
+                    return metrics.save_to_sqlite(&mut conn, granularity).map_err(|e| ClusteredIndexError::ResultDBError(e.to_string()));
+                }else{
+                    warn!("Metrics not enabled!");
+                }
+            },
+            Err(e) => return Err(e),
+        }
+
         Ok(())
     }
     
@@ -244,7 +267,7 @@ where
         // since we compute each distance from the center to the query we dont actually 
         // need to redo it in the exit condition
         if let Some(metrics) = &mut self.metrics {
-            metrics.add_distance_computation(cluster_distances.len());
+            metrics.add_distance_computation_global(cluster_distances.len());
         }
     
         cluster_distances.sort_by(|&(_, dist_a), &(_, dist_b)| {
@@ -259,5 +282,10 @@ where
             .iter()
             .map(|&local_idx| cluster.assignment[local_idx as usize])
             .collect()
+    }
+
+    fn db_exists(db_file_path: &str) -> bool {
+        // This function checks if a database file exists at the specified file path
+        fs::metadata(db_file_path).is_ok()
     }
 }

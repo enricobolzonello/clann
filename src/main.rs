@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use clann::{build, core::Config, enable_metrics, init_with_config, metricdata::AngularData, save_metrics, search, utils::{get_recall_values, load_hdf5_dataset}};
+use clann::{build, core::Config, enable_run_metrics, init_with_config, metricdata::{AngularData, MetricData}, save_metrics, search, utils::{load_hdf5_dataset, metrics::MetricsGranularity}};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 
@@ -12,23 +12,25 @@ fn main() {
     info!("Starting search benchmark");
     let total_start = Instant::now();
 
-    const OUTPUT_PATH: &str = "./runs";
+    const DB_PATH: &str = "/home/bolzo/puffinn-tests/clann_results.sqlite3";
 
     let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
     let data = AngularData::new(data_raw);
+    let n = data.num_points();
 
     let config = Config{
         kb_per_point: 1,
         num_clusters_factor: 0.1,
         k: 10,
         delta: 0.9,
+        dataset_name: "glove-25-angular".to_owned(),
     };
 
     let mut index = init_with_config(data, config).unwrap();
 
     build(&mut index).map_err(|e| eprintln!("Error: {}", e)).unwrap();
 
-    enable_metrics(&mut index).unwrap();
+    enable_run_metrics(&mut index).unwrap();
 
     info!("Processing {} queries", queries.nrows());
     let search_start = Instant::now();
@@ -74,18 +76,22 @@ fn main() {
     
     let total_search_time = search_start.elapsed();
 
-    let (recall_mean, recall_std, _) = get_recall_values(&ground_truth_distances, &distance_results, 10);
-
     info!("All queries processed in {:?}", total_search_time);
     info!("Average query time: {:?}", total_search_time / queries.nrows() as u32);
     info!("Min query time: {:?}", min_search_time);
     info!("Max query time: {:?}", max_search_time);
     info!("Total results: {}", distance_results.len());
-    info!("Recall mean {:.2} with std {:.2}", recall_mean, recall_std);
 
     // Save metrics
-    info!("Saving metrics to {}", OUTPUT_PATH);
-    save_metrics(&mut index, OUTPUT_PATH).unwrap();
+    info!("Saving metrics to {}", DB_PATH);
+    save_metrics(&mut index, 
+        DB_PATH,
+        MetricsGranularity::Cluster,
+        &ground_truth_distances,
+        &distance_results,
+        n,
+        &total_search_time
+    ).unwrap();
 
     info!("Benchmark completed in {:?}", total_start.elapsed());
 }

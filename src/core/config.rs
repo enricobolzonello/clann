@@ -12,8 +12,11 @@ pub struct Config {
     /// Number of nearest neighbors to search
     pub k: usize,
 
-    /// Recall
+    /// Expected Recall
     pub delta: f32,
+
+    /// Dataset name
+    pub dataset_name: String,
 }
 
 impl Default for Config {
@@ -22,7 +25,8 @@ impl Default for Config {
             kb_per_point: 1,   
             num_clusters_factor: 1.0,
             k: 10, 
-            delta: 0.9
+            delta: 0.9,
+            dataset_name: "".to_string(),
         }
     }
 }
@@ -32,13 +36,15 @@ impl Config {
         kb_per_point: usize,
         num_clusters_factor: f32,
         k: usize,
-        delta: f32
+        delta: f32,
+        dataset_name: &str,
     ) -> Self {
         Self{
             kb_per_point,
             num_clusters_factor,
             k,
-            delta
+            delta,
+            dataset_name: dataset_name.to_string()
         }
     }
 }
@@ -58,7 +64,7 @@ mod tests {
 
     #[test]
     fn test_new_config() {
-        let config = Config::new(2048, 10.0, 10, 0.9);
+        let config = Config::new(2048, 10.0, 10, 0.9, "");
         
         // Check custom values
         assert_eq!(config.kb_per_point, 2048);
@@ -67,7 +73,7 @@ mod tests {
 
     #[test]
     fn test_serialize_config() {
-        let config = Config::new(2048, 10.0, 10, 0.9);
+        let config = Config::new(2048, 10.0, 10, 0.9, "");
         
         // Check if it can serialize and deserialize
         let serialized = serde_json::to_string(&config).unwrap();

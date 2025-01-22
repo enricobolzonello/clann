@@ -1,39 +1,61 @@
-use std::{fs::File, path::Path};
 use std::time::Duration;
-use chrono::Local;
-use csv::Writer;
+
+use log::warn;
+use ndarray::{Array, Ix1, Ix2};
+use rusqlite::{params, Connection};
 
 use crate::core::Config;
 
+#[derive(Debug, Clone, Copy)]
+pub enum MetricsGranularity {
+    Run,             // Only overall run metrics
+    Query,           // Run + per-query metrics
+    Cluster,         // Run + per-query + per-cluster metrics
+}
+
 pub struct QueryMetrics {
-    n_candidates: Vec<usize>,
-    cluster_timings: Vec<Duration>,
-    pub distance_computations: usize,
-    // TODO
-    // cluster size
-    // cluster distance computations
+    pub distance_computations: usize,     // Global distance computations
+    pub query_time: Duration,
+    pub cluster_n_candidates: Vec<usize>, // Number of candidates per cluster
+    pub cluster_timings: Vec<Duration>,   // Timing for each cluster
+    pub cluster_distance_computations: Vec<usize>, // Distance computations per cluster
 }
 
 pub struct RunMetrics {
-    // run data
-    pub queries: Vec<QueryMetrics>,
+    pub queries: Vec<QueryMetrics>, // Query metrics for the current run
+    pub cluster_sizes: Vec<usize>,  // Sizes of the clusters
+    config: Config,
+    memory_used_bytes: usize,
+    total_search_time_s: f32,
+    queries_per_second: f32,
+    recall_mean: f32,
+    recall_std: f32,
 }
 
 impl QueryMetrics {
-    pub fn new(
-    ) -> Self {
-        Self { 
-            n_candidates: Vec::new(),
+    pub fn new() -> Self {
+        Self {
+            distance_computations: 0,
+            query_time: Duration::default(),
+            cluster_n_candidates: Vec::new(),
             cluster_timings: Vec::new(),
-            distance_computations: 0
+            cluster_distance_computations: Vec::new(),
         }
     }
 }
 
 impl RunMetrics {
-    pub fn new() -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             queries: Vec::new(),
+            cluster_sizes: Vec::new(),
+            config,
+            memory_used_bytes: 0,
+            total_search_time_s: 0.0,
+            queries_per_second: 0.0,
+            recall_mean: 0.0,
+            recall_std: 0.0,
+            
         }
     }
 
@@ -41,115 +63,312 @@ impl RunMetrics {
         self.queries.push(QueryMetrics::new());
     }
 
-    pub fn current_query_mut(&mut self) -> &mut QueryMetrics {
-        let n = self.queries.len();
-        &mut self.queries[n - 1]
+    pub fn current_query_mut(&mut self) -> Option<&mut QueryMetrics> {
+        self.queries.last_mut()
     }
 
-    pub fn current_query(&self) -> &QueryMetrics {
-        let n = self.queries.len();
-        &self.queries[n - 1]
+    pub fn current_query(&self) -> Option<&QueryMetrics> {
+        self.queries.iter().last()
     }
 
     pub fn log_n_candidates(&mut self, n_candidates: usize) {
-        self.current_query_mut().n_candidates.push(n_candidates);
+        if let Some(query) = self.current_query_mut() {
+            query.cluster_n_candidates.push(n_candidates);
+        }
     }
 
     pub fn log_cluster_time(&mut self, time: Duration) {
-        self.current_query_mut().cluster_timings.push(time);
+        if let Some(query) = self.current_query_mut() {
+            query.cluster_timings.push(time);
+        }
     }
 
-    pub fn add_distance_computation(&mut self, n_comp: usize) {
-        self.current_query_mut().distance_computations += n_comp;
+    pub fn log_cluster_size(&mut self, cluster_size: usize) {
+        self.cluster_sizes.push(cluster_size);
     }
 
-    pub fn save_to_csv(&self, output_path: String, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-        if self.queries.is_empty() {
-            return Err("There is no query data to save".into());
+    pub fn log_query_time(&mut self, time: Duration) {
+        if let Some(query) = self.current_query_mut() {
+            query.query_time = time;
+        }
+    }
+
+    pub fn add_distance_computation_global(&mut self, n_comp: usize) {
+        if let Some(query) = self.current_query_mut() {
+            query.distance_computations += n_comp;
+        }
+    }
+
+    pub fn add_distance_computation_cluster(&mut self, n_comp: usize) {
+        if let Some(query) = self.current_query_mut() {
+            query.cluster_distance_computations.push(n_comp);
+            query.distance_computations += n_comp;
+        }
+    }
+
+    pub fn compute_run_statistics(
+        &mut self,
+        dataset_distances: &Array<f32, Ix2>,
+        run_distances: &[Vec<f32>],
+        dataset_len: usize,
+        total_search_time: &Duration,
+    ) {
+        // Recall
+        (self.recall_mean, self.recall_std) = self.compute_recall(dataset_distances, run_distances);
+
+        // Memory used
+        self.memory_used_bytes = dataset_len * self.config.kb_per_point * 1024;
+
+        // Search time
+        self.total_search_time_s = total_search_time.as_secs_f32();
+
+        // QPS
+        self.queries_per_second = (run_distances.len() as f32) / self.total_search_time_s;
+    }
+
+    fn compute_recall(
+        &self,
+        dataset_distances: &Array<f32, Ix2>,
+        run_distances: &[Vec<f32>],
+    ) -> (f32, f32) {
+        let mut recalls = Vec::with_capacity(run_distances.len());
+
+        for i in 0..run_distances.len() {
+            // Get threshold from dataset (ground truth) distances
+            let t = Self::threshold(&dataset_distances.row(i).to_owned(), self.config.k, 1e-3);
+
+            // Count matches in our search results
+            let mut actual = 0;
+            for &d in run_distances[i].iter().take(self.config.k) {
+                if d <= t {
+                    actual += 1;
+                }
+            }
+            recalls.push(actual as f32);
         }
 
-        // Ensure the directory exists
-        let output_dir = Path::new(&output_path);
-        if !output_dir.exists() {
-            return Err(format!("Output directory {} does not exist", output_path).into());
-        }
+        let mean_recall = recalls.iter().sum::<f32>() / (recalls.len() as f32 * self.config.k as f32);
+        let std_recall = {
+            let mean = recalls.iter().sum::<f32>() / recalls.len() as f32;
+            (recalls.iter().map(|&r| (r - mean).powi(2)).sum::<f32>() / recalls.len() as f32).sqrt()
+                / self.config.k as f32
+        };
 
-        let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-        let filepath = format!("{}/metrics_{}.csv", output_path, timestamp);
-        let file = File::create(&filepath)
-            .map_err(|e| format!("Failed to create file {}: {}", filepath, e))?;
-        let mut writer = Writer::from_writer(file);
+        (mean_recall, std_recall)
+    }
 
-        // Write parameters as metadata
-        writer
-            .write_record(["param", "cluster_factor", &config.num_clusters_factor.to_string(), "-1", "-1"])
-            .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
-        writer
-            .write_record(["param", "K", &config.k.to_string(), "-1", "-1"])
-            .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
-        writer
-            .write_record(["param", "delta", &config.delta.to_string(), "-1", "-1"])
-            .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
-        writer
-            .write_record(["param", "kb_per_point", &config.kb_per_point.to_string(), "-1", "-1"])
-            .map_err(|e| format!("Failed to write metadata to {}: {}", filepath, e))?;
+    fn threshold(distances: &Array<f32, Ix1>, count: usize, epsilon: f32) -> f32 {
+        // Assuming distances need to be sorted first since we're finding the k-th smallest
+        let mut sorted_distances: Vec<f32> = distances.to_vec();
+        sorted_distances.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        sorted_distances[count - 1] + epsilon
+    }
 
-        // Write header
-        writer
-            .write_record([
-                "query",
-                "cluster_idx",
-                "n_candidates",
-                "cluster_duration_μs",
-                "total_distances_computed"
-            ])
-            .map_err(|e| format!("Failed to write header to {}: {}", filepath, e))?;
+    pub fn save_to_sqlite(&self, connection: &mut Connection, granularity: MetricsGranularity) -> Result<(), rusqlite::Error> {
+        // Start a transaction to ensure all inserts succeed or none do
+        let tx = connection.transaction()?;
 
-        // Write query data
-        for (query_idx, query) in (&self.queries).iter().enumerate() {
-            for idx in 0..query.n_candidates.len() {
-                writer
-                    .write_record([
-                        query_idx.to_string(),
-                        idx.to_string(),
-                        query.n_candidates[idx].to_string(),
-                        query.cluster_timings[idx].as_micros().to_string(),
-                        query.distance_computations.to_string(),
-                    ])
-                    .map_err(|e| format!("Failed to write query data to {}: {}", filepath, e))?;
+        // Always insert run-level metrics
+        self.sqlite_insert_clann_results(&tx)?;
+
+        // Insert query and cluster metrics based on granularity
+        match granularity {
+            MetricsGranularity::Run => (), // Only run metrics, already inserted
+            MetricsGranularity::Query => {
+                self.sqlite_insert_queries_only(&tx)?;
+            }
+            MetricsGranularity::Cluster => {
+                self.sqlite_insert_clann_results_query(&tx)?;
             }
         }
 
-        // Flush writer
-        writer
-            .flush()
-            .map_err(|e| format!("Failed to flush writer for {}: {}", filepath, e))?;
+        // Commit the transaction
+        tx.commit()
+    }
+
+    fn sqlite_insert_clann_results(&self, conn: &Connection) -> Result<(), rusqlite::Error> {
+        let current_time = chrono::Utc::now().to_rfc3339();
+
+        match conn.execute(
+            "INSERT INTO clann_results (
+                num_clusters, 
+                kb_per_point, 
+                k, 
+                delta, 
+                dataset, 
+                git_commit_hash, 
+                memory_used_bytes, 
+                total_time_ms, 
+                queries_per_second, 
+                recall_mean, 
+                recall_std, 
+                created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                self.config.num_clusters_factor,
+                self.config.kb_per_point,
+                self.config.k,
+                self.config.delta,
+                self.config.dataset_name,
+                option_env!("GIT_COMMIT_HASH").unwrap_or("NO_COMMIT"),
+                self.memory_used_bytes,
+                self.total_search_time_s,
+                self.queries_per_second,
+                self.recall_mean,
+                self.recall_std,
+                current_time,
+            ],
+        ) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // If it's a unique constraint violation, we can ignore it
+                // as it means we've already run this configuration
+                if let rusqlite::Error::SqliteFailure(error, Some(message)) = &e {
+                    if error.code == rusqlite::ErrorCode::ConstraintViolation
+                        && message.contains("UNIQUE constraint failed")
+                    {
+                        warn!("Metrics not saved, results with this configuration already exist");
+                        return Ok(());
+                    }
+                }
+                Err(e)
+            }
+        }
+    }
+
+    fn sqlite_insert_queries_only(&self, conn: &Connection) -> Result<(), rusqlite::Error> {
+
+        let current_time = chrono::Utc::now().to_rfc3339();
+        let git_hash = option_env!("GIT_COMMIT_HASH").unwrap_or("NO_COMMIT");
+
+        // Insert only query-level metrics
+        for (query_idx, query) in self.queries.iter().enumerate() {
+            self.sqlite_insert_query_metrics(conn, query_idx, query, &current_time, &git_hash)?;
+        }
 
         Ok(())
     }
 
-    pub fn print_summary(&self) {
-        println!("\nMetrics Summary:");
-        println!("Total queries: {}", self.queries.len());
-        
-        if !self.queries.is_empty() {
-            let total_computations: usize = self.queries
-                .iter()
-                .map(|q| q.distance_computations)
-                .sum();
-            
-            let total_time: f64 = self.queries
-                .iter()
-                .flat_map(|q| q.cluster_timings.iter())
-                .sum::<Duration>()
-                .as_secs_f64() * 1000.0;
+    fn sqlite_insert_clann_results_query(&self, conn: &Connection) -> Result<(), rusqlite::Error> {
 
-            println!("Total distance computations: {}", total_computations);
-            println!("Average computations per query: {:.2}", 
-                total_computations as f64 / self.queries.len() as f64);
-            println!("Total clustering time: {:.2}ms", total_time);
-            println!("Average time per query: {:.2}ms", 
-                total_time / self.queries.len() as f64);
+        let current_time = chrono::Utc::now().to_rfc3339();
+        let git_hash = option_env!("GIT_COMMIT_HASH").unwrap_or("NO_COMMIT");
+
+        // Insert query-level metrics
+        for (query_idx, query) in self.queries.iter().enumerate() {
+            self.sqlite_insert_query_metrics(conn, query_idx, query, &current_time, &git_hash)?;
+            
+            // Insert cluster-level metrics for each query
+            for (cluster_idx, ((n_candidates, timing), distance_comp)) in query
+                .cluster_n_candidates
+                .iter()
+                .zip(&query.cluster_timings)
+                .zip(&query.cluster_distance_computations)
+                .enumerate()
+            {
+                self.sqlite_insert_cluster_metrics(
+                    conn,
+                    query_idx,
+                    cluster_idx,
+                    *n_candidates,
+                    timing,
+                    *distance_comp,
+                    &current_time,
+                    &git_hash,
+                )?;
+            }
         }
+
+        Ok(())
+    }
+
+    fn sqlite_insert_query_metrics(
+        &self,
+        conn: &Connection,
+        query_idx: usize,
+        query: &QueryMetrics,
+        current_time: &str,
+        git_hash: &str,
+    ) -> Result<(), rusqlite::Error> {
+        conn.execute(
+            "INSERT INTO clann_results_query (
+                num_clusters,
+                kb_per_point,
+                k,
+                delta,
+                dataset,
+                git_commit_hash,
+                query_idx,
+                query_time_ms,
+                distance_computations,
+                created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                self.config.num_clusters_factor,
+                self.config.kb_per_point,
+                self.config.k,
+                self.config.delta,
+                self.config.dataset_name,
+                git_hash,
+                query_idx as i64,
+                query.query_time.as_micros() as i64,
+                query.distance_computations as i64,
+                current_time,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    fn sqlite_insert_cluster_metrics(
+        &self,
+        conn: &Connection,
+        query_idx: usize,
+        cluster_idx: usize,
+        n_candidates: usize,
+        timing: &Duration,
+        distance_comp: usize,
+        current_time: &str,
+        git_hash: &str,
+    ) -> Result<(), rusqlite::Error> {
+        let cluster_size = self
+            .cluster_sizes
+            .get(cluster_idx)
+            .unwrap_or(&0);
+
+        conn.execute(
+            "INSERT INTO clann_results_query_cluster (
+                num_clusters,
+                kb_per_point,
+                k,
+                delta,
+                dataset,
+                git_commit_hash,
+                query_idx,
+                cluster_idx,
+                n_candidates,
+                cluster_time_ms,
+                cluster_size,
+                cluster_distance_computations,
+                created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                self.config.num_clusters_factor,
+                self.config.kb_per_point,
+                self.config.k,
+                self.config.delta,
+                self.config.dataset_name,
+                git_hash,
+                query_idx as i64,
+                cluster_idx as i64,
+                n_candidates as i64,
+                timing.as_micros() as i64,
+                *cluster_size as i64,
+                distance_comp as i64,
+                current_time,
+            ],
+        )?;
+
+        Ok(())
     }
 }

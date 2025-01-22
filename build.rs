@@ -1,6 +1,20 @@
-use std::path::Path;
+use std::{path::Path, process::Command};
 
 fn main() {
+    // Get the current Git commit hash
+    let output = Command::new("git")
+        .args(&["rev-parse", "HEAD"])
+        .output()
+        .expect("Failed to execute git command");
+    
+    if output.status.success() {
+        let git_hash = String::from_utf8(output.stdout).unwrap_or_default();
+        println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_hash.trim());
+    } else {
+        eprintln!("Failed to get Git commit hash");
+        println!("cargo:rustc-env=GIT_COMMIT_HASH=unknown");
+    }
+
     // Define paths and flags
     let puffinn_include_dir = Path::new("puffinn/include");
     let c_api_dir = Path::new("c_api");

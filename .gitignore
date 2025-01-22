@@ -1,3 +1,7 @@
 target/
-datasets/
+
+datasets/*
+!datasets/.gitkeep
+
 runs/
+clann_results.sqlite3

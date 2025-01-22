@@ -1,16 +1,19 @@
 //! Clustered LSH-based Algorithm for the Nearest Neighbors problem
-//! 
+//!
 //! CLANN is an algorithm solving the Nearest Neighbors problem, built on top of PUFFINN. Rather than constructing a single index, the algorithm begins by dividing the dataset into clusters based on a user-defined number. It then builds a separate PUFFINN index for each cluster.
 //! This approach, even though requires more memory and index building time, effectively cuts the hit distribution for the LSH function, ensuring that points that are far apart cannot collide. In classic LSH scenarios, it has been observed long tails of hits, due to the probabilistic nature of the function. Even though far points have low probability of colliding it was still not null, and the problem accentuated with queries far away from the dataset, where it approximates to a brute-force approach.
-//! 
+//!
 
 use core::{index::ClusteredIndex, Config, Result};
+use std::time::Duration;
 
 use metricdata::{MetricData, Subset};
+use ndarray::{Array, Ix2};
 use puffinn_binds::IndexableSimilarity;
+use utils::metrics::MetricsGranularity;
 
-pub mod metricdata;
 pub mod core;
+pub mod metricdata;
 pub mod puffinn_binds;
 pub mod utils;
 
@@ -46,7 +49,7 @@ where
     index.search(query)
 }
 
-pub fn enable_metrics<T>(index: &mut ClusteredIndex<T>) -> Result<()>
+pub fn enable_run_metrics<T>(index: &mut ClusteredIndex<T>) -> Result<()>
 where
     T: MetricData + IndexableSimilarity<T> + Subset,
     <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
@@ -54,10 +57,25 @@ where
     index.enable_metrics()
 }
 
-pub fn save_metrics<T>(index: &mut ClusteredIndex<T>, output_path: &str) -> Result<()>
+pub fn save_metrics<T>(
+    index: &mut ClusteredIndex<T>,
+    output_path: &str,
+    granularity: MetricsGranularity,
+    ground_truth_distances: &Array<f32, Ix2>,
+    run_distances: &[Vec<f32>],
+    dataset_len: usize,
+    total_search_time: &Duration,
+) -> Result<()>
 where
     T: MetricData + IndexableSimilarity<T> + Subset,
     <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
 {
-    index.save_metrics(output_path.to_string())
+    index.save_metrics(
+        output_path.to_string(),
+        granularity,
+        ground_truth_distances,
+        run_distances,
+        dataset_len,
+        total_search_time,
+    )
 }
