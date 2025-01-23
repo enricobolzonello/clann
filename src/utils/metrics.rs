@@ -25,6 +25,7 @@ pub struct RunMetrics {
     pub queries: Vec<QueryMetrics>, // Query metrics for the current run
     pub cluster_sizes: Vec<usize>,  // Sizes of the clusters
     config: Config,
+    dataset_len: usize,
     memory_used_bytes: usize,
     total_search_time_s: f32,
     queries_per_second: f32,
@@ -45,7 +46,7 @@ impl QueryMetrics {
 }
 
 impl RunMetrics {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, dataset_len: usize) -> Self {
         Self {
             queries: Vec::new(),
             cluster_sizes: Vec::new(),
@@ -55,7 +56,7 @@ impl RunMetrics {
             queries_per_second: 0.0,
             recall_mean: 0.0,
             recall_std: 0.0,
-            
+            dataset_len,
         }
     }
 
@@ -196,14 +197,15 @@ impl RunMetrics {
                 k, 
                 delta, 
                 dataset, 
-                git_commit_hash, 
+                git_commit_hash,
+                dataset_len, 
                 memory_used_bytes, 
                 total_time_ms, 
                 queries_per_second, 
                 recall_mean, 
                 recall_std, 
                 created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 self.config.num_clusters_factor,
                 self.config.kb_per_point,
@@ -211,6 +213,7 @@ impl RunMetrics {
                 self.config.delta,
                 self.config.dataset_name,
                 option_env!("GIT_COMMIT_HASH").unwrap_or("NO_COMMIT"),
+                self.dataset_len,
                 self.memory_used_bytes,
                 self.total_search_time_s,
                 self.queries_per_second,

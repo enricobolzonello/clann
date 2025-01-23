@@ -12,54 +12,5 @@
         "k": 10,
         "delta": 0.9,
         "dataset_name" : "glove-25-angular"
-    },
-    {
-        "kb_per_point": 1,
-        "num_clusters_factor": 0.08,
-        "k": 10,
-        "delta": 0.9,
-        "dataset_name" : "glove-25-angular"
-    },
-    {
-        "kb_per_point": 1,
-        "num_clusters_factor": 0.1,
-        "k": 10,
-        "delta": 0.9,
-        "dataset_name" : "glove-25-angular"
-    },
-    {
-        "kb_per_point": 1,
-        "num_clusters_factor": 0.13,
-        "k": 10,
-        "delta": 0.9,
-        "dataset_name" : "glove-25-angular"
-    },
-    {
-        "kb_per_point": 1,
-        "num_clusters_factor": 0.15,
-        "k": 10,
-        "delta": 0.9,
-        "dataset_name" : "glove-25-angular"
-    },
-    {
-        "kb_per_point": 1,
-        "num_clusters_factor": 0.17,
-        "k": 10,
-        "delta": 0.9,
-        "dataset_name" : "glove-25-angular"
-    },
-    {
-        "kb_per_point": 1,
-        "num_clusters_factor": 0.2,
-        "k": 10,
-        "delta": 0.9,
-        "dataset_name" : "glove-25-angular"
-    },
-    {
-        "kb_per_point": 1,
-        "num_clusters_factor": 0.3,
-        "k": 10,
-        "delta": 0.9,
-        "dataset_name" : "glove-25-angular"
     }
 ]

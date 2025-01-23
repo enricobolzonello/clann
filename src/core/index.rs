@@ -216,7 +216,7 @@ where
     pub fn enable_metrics(&mut self) -> Result<()> {
 
         self.metrics = Some(
-            RunMetrics::new(self.config.clone())
+            RunMetrics::new(self.config.clone(), self.data.num_points())
         );
 
         Ok(())

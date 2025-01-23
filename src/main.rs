@@ -12,7 +12,7 @@ fn main() {
     info!("Starting search benchmark");
     let total_start = Instant::now();
 
-    const DB_PATH: &str = "/home/bolzo/puffinn-tests/clann_results.sqlite3";
+    const DB_PATH: &str = "./clann_results.sqlite3";
 
     let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
     let data = AngularData::new(data_raw);
