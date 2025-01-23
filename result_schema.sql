@@ -36,7 +36,8 @@ CREATE TABLE clann_results_query (
 	PRIMARY KEY (num_clusters, kb_per_point, k, delta, dataset, git_commit_hash, query_idx), 
 	FOREIGN KEY (num_clusters, kb_per_point, k, delta, dataset, git_commit_hash) REFERENCES clann_results(num_clusters, kb_per_point, k, delta, dataset, git_commit_hash) ON DELETE CASCADE, 
 	CONSTRAINT positive_time CHECK (query_time_ms >= 0), 
-	CONSTRAINT positive_computations CHECK (distance_computations >= 0) ); 
+	CONSTRAINT positive_computations CHECK (distance_computations >= 0) 
+); 
 
 -- Table for storing detailed per-cluster metrics for each query 
 CREATE TABLE clann_results_query_cluster ( 
@@ -58,4 +59,34 @@ CREATE TABLE clann_results_query_cluster (
 	CONSTRAINT positive_candidates CHECK (n_candidates >= 0), 
 	CONSTRAINT positive_cluster_time CHECK (cluster_time_ms >= 0),
 	CONSTRAINT positive_cluster_size CHECK (cluster_size >= 0),
-	CONSTRAINT positive_cluster_computations CHECK (cluster_distance_computations >= 0) );
+	CONSTRAINT positive_cluster_computations CHECK (cluster_distance_computations >= 0) 
+);
+
+
+CREATE TABLE puffinn_results ( 
+	kb_per_point REAL NOT NULL, 
+	k INTEGER NOT NULL, 
+	delta REAL NOT NULL, 
+	dataset TEXT NOT NULL, 
+	dataset_len INTEGER,
+	memory_used_bytes INTEGER, 
+	total_time_ms INTEGER, 
+	queries_per_second REAL, 
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
+	PRIMARY KEY (kb_per_point, k, delta, dataset)
+); 
+
+CREATE TABLE puffinn_results_query (
+    kb_per_point REAL NOT NULL,
+    k INTEGER NOT NULL,
+    delta REAL NOT NULL,
+    dataset TEXT NOT NULL,
+    query_idx INTEGER NOT NULL,
+    query_time_ms INTEGER, 
+    distance_computations INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (kb_per_point, k, delta, dataset, query_idx),
+    FOREIGN KEY (kb_per_point, k, delta, dataset) REFERENCES puffinn_results(kb_per_point, k, delta, dataset) ON DELETE CASCADE,
+    CONSTRAINT positive_time CHECK (query_time_ms >= 0),
+    CONSTRAINT positive_computations CHECK (distance_computations >= 0)
+);

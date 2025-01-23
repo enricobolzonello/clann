@@ -11,7 +11,7 @@ pub enum BenchmarkError {
     ConfigExists(String),
 }
 
-pub fn check_configuration_exists(
+pub fn check_configuration_exists_clann(
     conn: &Connection,
     config: &Config,
     git_hash: &str,
@@ -54,6 +54,48 @@ pub fn check_configuration_exists(
         );
         
         Err(BenchmarkError::ConfigExists(msg))
+    } else {
+        Ok(false)
+    }
+}
+
+pub fn check_configuration_exists_puffinn(
+    conn: &Connection,
+    config: &Config,
+) -> Result<bool, rusqlite::Error> {
+    let query = "
+        SELECT created_at, queries_per_second 
+        FROM puffinn_results 
+        WHERE kb_per_point = ?1 
+        AND k = ?2 
+        AND delta = ?3 
+        AND dataset = ?4
+    ";
+
+    let mut stmt = conn.prepare(query)?;
+    let mut rows = stmt.query(params![
+        config.kb_per_point,
+        config.k,
+        config.delta,
+        config.dataset_name,
+    ])?;
+
+    if let Some(row) = rows.next()? {
+        let created_at: String = row.get(0)?;
+        let queries_per_second: f64 = row.get(1)?;
+        
+        println!(
+            "Puffinn Configuration already tested on {} with {:.3} queries/sec:\n\
+             Dataset: {}, KB/point: {}, k: {}, delta: {}", 
+            created_at,
+            queries_per_second,
+            config.dataset_name,
+            config.kb_per_point,
+            config.k,
+            config.delta
+        );
+        
+        Ok(true)
     } else {
         Ok(false)
     }
