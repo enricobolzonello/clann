@@ -157,24 +157,26 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
     println!("{:-<120}", "");
 
     for (config_idx, config) in configs.iter().enumerate() {
-
         match check_configuration_exists(&conn, config, git_hash) {
             Ok(false) => {
-                // Configuration doesn't exist, run the benchmark
-                let (clustered_counts, puffinn_counts, search_time, distance_results) = 
-                    run_benchmark_config(config)?;
-
-                results.add_config_results(
-                    clustered_counts,
-                    puffinn_counts,
-                    search_time,
-                    distance_results,
-                );
-
-                results.print_summary(config_idx);
+                // Run benchmark, catching any errors for this specific configuration
+                match run_benchmark_config(config) {
+                    Ok((clustered_counts, puffinn_counts, search_time, distance_results)) => {
+                        results.add_config_results(
+                            clustered_counts,
+                            puffinn_counts,
+                            search_time,
+                            distance_results,
+                        );
+                        results.print_summary(config_idx);
+                    },
+                    Err(e) => {
+                        println!("Error running benchmark for configuration {}: {}", config_idx, e);
+                        continue;
+                    }
+                }
             }
             Ok(true) => {
-                // This shouldn't happen due to our error handling
                 println!("Configuration {} already exists (unexpected)", config_idx);
                 continue;
             }
@@ -194,65 +196,88 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-fn run_benchmark_config(
-    config: &Config,
-) -> Result<(Vec<u32>, Vec<u32>, Duration, Vec<Vec<f32>>), Box<dyn std::error::Error>> {
+fn run_benchmark_config(config: &Config) -> Result<(Vec<u32>, Vec<u32>, Duration, Vec<Vec<f32>>), Box<dyn std::error::Error>> {
     let dataset_path = format!("./datasets/{}.hdf5", config.dataset_name);
     let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset(&dataset_path)?;
-
+    
     let data = AngularData::new(data_raw);
     let n = data.num_points();
-
+    
     // create the two indexes
-    let base_index = PuffinnIndex::new(&data, config.kb_per_point * data.num_points() * 1024).expect("Failed to initialize PUFFINN index");
-    let mut clustered_index = init_with_config(data, config.clone()).expect("Failed to initialize clustered index");
-    clustered_index.enable_metrics().expect("Failed to enable metrics");
-    build(&mut clustered_index).expect("Failed to build clustered index");
+    let base_index = PuffinnIndex::new(&data, config.kb_per_point * data.num_points() * 1024)
+        .expect("Failed to initialize PUFFINN index");
+    
+    // Attempt to build the clustered index, but skip if it fails
+    let mut clustered_index = match init_with_config(data, config.clone()) {
+        Ok(index) => index,
+        Err(e) => {
+            eprintln!("Failed to initialize clustered index: {:?}", e);
+            return Err(Box::new(e));
+        }
+    };
+    
+    // Skip build if it fails
+    match build(&mut clustered_index) {
+        Ok(_) => {
+            clustered_index.enable_metrics().expect("Failed to enable metrics");
+        },
+        Err(e) => {
+            eprintln!("Failed to build clustered index: {:?}", e);
+            return Err(Box::new(e));
+        }
+    }
     
     let mut clustered_counts = Vec::new();
     let mut puffinn_counts = Vec::new();
     let mut distance_results = Vec::with_capacity(queries.nrows());
     
     let search_start = Instant::now();
-    // run all queries
+    // run all queries (CLANN)
     for query in queries.rows() {
         let query_slice = query.as_slice().expect("Failed to get query slice");
-
+        
         let result = search(&mut clustered_index, query_slice).unwrap();
-
-        let distances: Vec<f32> = result.iter()
-            .map(|&(distance, _)| distance)
-            .collect();
-        distance_results.push(distances);
-
+        distance_results.push(result);
+        
         let clustered_count = clustered_index
             .metrics
             .as_ref()
             .expect("Metrics not enabled")
             .current_query()
             .unwrap().distance_computations as u32;
-
-        base_index
-            .search::<AngularData<ndarray::OwnedRepr<f32>>>(query_slice, config.k, config.delta)
-            .expect("PUFFINN search failed");
-        let puffinn_count = get_distance_computations();
-
+        
         clustered_counts.push(clustered_count);
-        puffinn_counts.push(puffinn_count);
     }
     let total_search_time = search_start.elapsed();
 
+    // run all queries (PUFFINN)
+    for query in queries.rows() {
+        let query_slice = query.as_slice().expect("Failed to get query slice");
+        
+        base_index
+            .search::<AngularData<ndarray::OwnedRepr<f32>>>(query_slice, config.k, config.delta)
+            .expect("PUFFINN search failed");
+        
+        let puffinn_count = get_distance_computations();
+        
+        puffinn_counts.push(puffinn_count);
+    }
+
+    let distances: Vec<Vec<f32>> = distance_results.iter()
+        .map(|result| result.iter().map(|&(distance, _)| distance).collect())
+        .collect();
+    
     save_metrics(
         &mut clustered_index,
         DB_PATH,
         MetricsGranularity::Query,
         &ground_truth_distances,
-        &distance_results,
+        &distances,
         n,
         &total_search_time,
     )?;
-
-    Ok((clustered_counts, puffinn_counts, total_search_time, distance_results))
+    
+    Ok((clustered_counts, puffinn_counts, total_search_time, distances))
 }
 
 pub fn run_distance_benchmarks(_c: &mut Criterion) {
