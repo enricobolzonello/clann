@@ -8,7 +8,7 @@ pub struct Element {
 }
 
 pub struct TopKClosestHeap {
-    heap: BinaryHeap<Element>, // Remove Reverse wrapper since we want max-heap behavior
+    heap: BinaryHeap<Element>, 
     length: usize,
 }
 
@@ -36,14 +36,7 @@ impl TopKClosestHeap {
     }
 
     pub fn get_top(&self) -> Option<(usize, f32)> {
-        if self.heap.len() == self.length {
-            
-            self.heap.iter()
-                .min_by_key(|e| e.distance)
-                .map(|e| (e.point_index, e.distance.0))
-        } else {
-            None
-        }
+        self.heap.peek().map(|e| (e.point_index, e.distance.0))
     }
 
     pub fn to_list(&self) -> Vec<(f32, usize)> {
@@ -149,14 +142,14 @@ mod tests {
             point_index: 2,
         });
 
-        assert_eq!(heap.get_top(), Some((2,1.0)));
+        assert_eq!(heap.get_top(), Some((1,2.0)));
 
         heap.add(Element {
             distance: OrderedFloat(0.5),
             point_index: 3,
         });
 
-        assert_eq!(heap.get_top(), Some((3,0.5)));
+        assert_eq!(heap.get_top(), Some((2,1.0)));
     }
 
     #[test]
