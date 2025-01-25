@@ -13,7 +13,7 @@ unsafe extern "C" {
     ) -> *mut CPUFFINN;
 }
 unsafe extern "C" {
-    pub fn CPUFFINN_index_rebuild(index: *mut CPUFFINN);
+    pub fn CPUFFINN_index_rebuild(index: *mut CPUFFINN) -> cty::c_int;
 }
 unsafe extern "C" {
     pub fn CPUFFINN_index_insert_float(

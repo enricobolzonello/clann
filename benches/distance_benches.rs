@@ -105,7 +105,7 @@ fn run_benchmark_config_puffinn(
     let data = AngularData::new(data_raw);
     let n = data.num_points();
 
-    // create the two indexes
+    // create index
     let base_index = PuffinnIndex::new(&data, config.kb_per_point * data.num_points() * 1024)
         .expect("Failed to initialize PUFFINN index");
 

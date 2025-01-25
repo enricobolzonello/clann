@@ -16,9 +16,14 @@ extern "C" {
     }
 
     // Rebuild the index
-    void CPUFFINN_index_rebuild(CPUFFINN* index) {
-        auto cpp_index = reinterpret_cast<puffinn::Index<puffinn::CosineSimilarity>*>(index);
-        cpp_index->rebuild();
+    int CPUFFINN_index_rebuild(CPUFFINN* index) {
+        try{
+            auto cpp_index = reinterpret_cast<puffinn::Index<puffinn::CosineSimilarity>*>(index);
+            cpp_index->rebuild();
+            return 0; // success
+        } catch (...) {
+            return 1;
+        }
     }
 
     // Insert a point into the index

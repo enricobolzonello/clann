@@ -39,7 +39,10 @@ impl PuffinnIndex {
 
         // Rebuild the index after inserting the points.
         unsafe {
-            CPUFFINN_index_rebuild(index.raw);
+            let r = CPUFFINN_index_rebuild(index.raw);
+            if r == 1 {
+                return Err("Failed to create PUFFINN index, insufficient memory".to_string());
+            }
         }
 
         Ok(index)

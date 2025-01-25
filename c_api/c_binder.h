@@ -7,7 +7,7 @@ extern "C" {
     typedef struct CPUFFINN CPUFFINN;
 
     CPUFFINN* CPUFFINN_index_create(const char* dataset_type, int dataset_args, uint64_t memory_limit);
-    void CPUFFINN_index_rebuild(CPUFFINN* index);
+    int CPUFFINN_index_rebuild(CPUFFINN* index);
 
     // For float data (angular)
     void CPUFFINN_index_insert_float(CPUFFINN* index, float* point, int dimension);
