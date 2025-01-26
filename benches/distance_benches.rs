@@ -63,7 +63,7 @@ fn run_benchmark_config_clann(
     for query in queries.rows() {
         let query_slice = query.as_slice().expect("Failed to get query slice");
 
-        let result = search(&mut clustered_index, query_slice).unwrap();
+        let result = search(&mut clustered_index, query_slice)?;
         distance_results.push(result);
 
         let clustered_count = clustered_index

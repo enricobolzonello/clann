@@ -1,9 +1,9 @@
 use std::fs;
 use std::time::{Duration, Instant};
 
+use log::{debug, error, info, trace, warn};
 use ndarray::{Array, Ix2};
 use ordered_float::OrderedFloat;
-use log::{debug, info, warn};
 use rusqlite::Connection;
 
 use crate::core::heap::Element;
@@ -19,10 +19,11 @@ use super::heap::TopKClosestHeap;
 
 #[derive(Clone)]
 struct ClusterCenter {
-    pub idx: usize,             // index of the cluster, corresponds to the index of the vec of puffinn indexes
-    pub center_idx: usize,      // index in the dataset for the center point
-    pub radius: f32,            // radius of the cluster
+    pub idx: usize, // index of the cluster, corresponds to the index of the vec of puffinn indexes
+    pub center_idx: usize, // index in the dataset for the center point
+    pub radius: f32, // radius of the cluster
     pub assignment: Vec<usize>, // vector of indices in the dataset
+    pub brute_force: bool,
 }
 
 pub struct ClusteredIndex<T>
@@ -33,7 +34,7 @@ where
     data: T,
     clusters: Vec<ClusterCenter>,
     config: Config,
-    puffinn_indices: Vec<PuffinnIndex>,
+    puffinn_indices: Vec<Option<PuffinnIndex>>,
     pub metrics: Option<RunMetrics>,
 }
 
@@ -58,21 +59,21 @@ where
     /// let index = ClusteredIndex::new(config, data).unwrap();
     /// ```
     pub fn new(config: Config, data: T) -> Result<Self> {
-
         if data.num_points() == 0 {
             return Err(ClusteredIndexError::DataError("empty dataset".to_string()));
         }
 
         info!("Initializing Index with config {:?}", config);
 
-        let k = (config.num_clusters_factor as f64 * (data.num_points() as f64).sqrt()).floor() as usize;
+        let k = (config.num_clusters_factor as f64 * (data.num_points() as f64).sqrt()).floor()
+            as usize;
 
         Ok(ClusteredIndex {
             data,
             clusters: Vec::with_capacity(k),
             config,
             puffinn_indices: Vec::with_capacity(k),
-            metrics: None
+            metrics: None,
         })
     }
 
@@ -86,9 +87,15 @@ where
     /// index.build();
     /// ```
     pub fn build(&mut self) -> Result<()> {
-        info!("num_clusters: {}", self.clusters.capacity());
+        let total_clusters = self.clusters.capacity();
+        info!("Starting build process with {} clusters", total_clusters);
+
         // 1) PERFORM CLUSTERING
-        let (centers, assignment, radius) = greedy_minimum_maximum(&self.data, self.clusters.capacity());
+        info!("Performing greedy clustering...");
+        let start_clustering = std::time::Instant::now();
+        let (centers, assignment, radius) =
+            greedy_minimum_maximum(&self.data, self.clusters.capacity());
+        info!("Clustering completed in {:.2?}", start_clustering.elapsed());
 
         let mut assignments: Vec<Vec<usize>> = vec![Vec::new(); centers.len()];
 
@@ -101,18 +108,39 @@ where
             .zip(radius.iter())
             .zip(assignments)
             .enumerate()
-            .map(|(idx, ((&center_idx, &radius), assignment_indexes))| ClusterCenter {
-                idx,
-                center_idx,
-                radius,
-                assignment: assignment_indexes,
+            .map(|(idx, ((&center_idx, &radius), assignment_indexes))| {
+                let cluster = ClusterCenter {
+                    idx,
+                    center_idx,
+                    radius,
+                    brute_force: assignment_indexes.len() < 500,
+                    assignment: assignment_indexes,
+                };
+
+                trace!(
+                    "Cluster {}: center_idx={}, points={}, radius={}, brute force? {}",
+                    idx,
+                    cluster.center_idx,
+                    cluster.assignment.len(),
+                    cluster.radius,
+                    cluster.brute_force
+                );
+
+                cluster
             })
             .collect();
 
         // 2) CREATE PUFFINN INDEXES
-        for cluster in &self.clusters {
+        info!("Creating Puffinn indexes...");
+        for (cluster_idx, cluster) in self.clusters.iter().enumerate() {
             if cluster.assignment.is_empty() {
-                debug!("Skipping empty cluster {}", cluster.center_idx);
+                debug!("Skipping empty cluster {}", cluster_idx);
+                continue;
+            }
+
+            if cluster.brute_force {
+                self.puffinn_indices.push(None);
+                info!("Skipping cluster {}, will do brute force", cluster_idx);
                 continue;
             }
 
@@ -123,18 +151,49 @@ where
             let cluster_memory_limit = cluster.assignment.len() * self.config.kb_per_point * 1024;
 
             debug!(
-                "Memory limit {}, points: {}",
-                cluster_memory_limit, cluster.assignment.len()
+                "Cluster {}: Memory limit {}, points: {}",
+                cluster_idx,
+                cluster_memory_limit,
+                cluster.assignment.len()
             );
 
-            // TODO: i dont like the clone
-            let index_data = self.data.subset(cluster.assignment.clone());
-            let puffinn_index = PuffinnIndex::new(&index_data, cluster_memory_limit)
-                .map_err(ClusteredIndexError::PuffinnCreationError)?;
+            // Progress logging
+            if cluster_idx % 10 == 0 {
+                info!(
+                    "Processing cluster {}/{} ({}%)",
+                    cluster_idx + 1,
+                    total_clusters,
+                    ((cluster_idx + 1) as f32 / total_clusters as f32 * 100.0).round()
+                );
+            }
 
-            // Store the Puffinn index
-            self.puffinn_indices.push(puffinn_index);
+            // Create Puffinn index
+            // TODO: i dont like the clone
+            match PuffinnIndex::new(
+                &self.data.subset(cluster.assignment.clone()),
+                cluster_memory_limit,
+            ) {
+                Ok(puffinn_index) => {
+                    self.puffinn_indices.push(Some(puffinn_index));
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to create Puffinn index for cluster {}: {:?}",
+                        cluster_idx, e
+                    );
+                    return Err(ClusteredIndexError::PuffinnCreationError(e));
+                }
+            }
         }
+
+        let indexing_duration = start_clustering.elapsed();
+
+        info!(
+            "Build process completed. Total clusters: {}, Indexing time: {:.2?}",
+            total_clusters, indexing_duration
+        );
+
+        println!("len: {}", self.puffinn_indices.len());
 
         Ok(())
     }
@@ -148,7 +207,10 @@ where
             metrics.new_query();
         }
 
-        debug!("Starting search procedure with parameters k={} and delta={:.2}", self.config.k, self.config.delta);
+        debug!(
+            "Starting search procedure with parameters k={} and delta={:.2}",
+            self.config.k, self.config.delta
+        );
 
         let delta_prime = 1.0 - (1.0 - self.config.delta) / (self.clusters.len() as f32);
 
@@ -160,19 +222,16 @@ where
         for cluster_idx in sorted_cluster {
             let cluster_start = Instant::now();
 
-            let cluster= &self.clusters[cluster_idx];
+            let cluster = &self.clusters[cluster_idx];
 
             if let Some(top) = priority_queue.get_top() {
-    
-                // log the distance computation
+                // log the distance computation of the exit condition
                 distance_computations += 1;
 
-                // TODO: this needs to be changed (distance computation can be avoided)
-                if self.data.distance_point(cluster.center_idx, query) - cluster.radius
-                    > top.1
-                {
-                    // log the distance computations of puffinn
-                    distance_computations += get_distance_computations() as usize;
+                // TODO
+                let cluster_min_distance =
+                    self.data.distance_point(cluster.center_idx, query) - cluster.radius;
+                if cluster_min_distance > top.1 {
                     if let Some(metrics) = &mut self.metrics {
                         metrics.add_distance_computation_cluster(distance_computations);
                         metrics.log_cluster_time(cluster_start.elapsed());
@@ -182,27 +241,48 @@ where
                 }
             }
 
-            let candidates: Vec<u32> = self.puffinn_indices[cluster.idx]
-                .search::<T>(query, self.config.k, delta_prime)
-                .map_err(ClusteredIndexError::PuffinnSearchError)?;
-
-            let mapped_candidates: Vec<usize> = self.map_candidates(&candidates, cluster);
-
             let mut points_added = 0;
-            for p in mapped_candidates {
-                let distance = self.data.distance_point(p, query);
-                if priority_queue.add(Element{
-                    distance: OrderedFloat(distance),
-                    point_index: p,
-                }){
-                    points_added += 1;
+            if cluster.brute_force {
+                let candidates = self.brute_force_search(cluster, query)?;
+
+                for (distance, p) in &candidates {
+                    if priority_queue.add(Element {
+                        distance: OrderedFloat(*distance),
+                        point_index: *p,
+                    }) {
+                        points_added += 1;
+                    }
                 }
+
+                distance_computations += candidates.len();
+            } else {
+
+                let candidates = match &self.puffinn_indices[cluster.idx] {
+                    Some(index) => {
+                        index.search::<T>(query, self.config.k, delta_prime).map_err(ClusteredIndexError::PuffinnSearchError)?
+                    },
+                    None => {
+                        return Err(ClusteredIndexError::IndexNotFound());
+                    }
+                };
+
+                let mapped_candidates: Vec<usize> = self.map_candidates(&candidates, cluster)?;
+
+                for p in mapped_candidates {
+                    let distance = self.data.distance_point(p, query);
+                    if priority_queue.add(Element {
+                        distance: OrderedFloat(distance),
+                        point_index: p,
+                    }) {
+                        points_added += 1;
+                    }
+                }
+
+                distance_computations += get_distance_computations() as usize;
             }
 
-            debug!("Added {} points in cluster {})", 
-                points_added, cluster.idx);
+            debug!("Added {} points in cluster {})", points_added, cluster.idx);
 
-            distance_computations += get_distance_computations() as usize;
             if let Some(metrics) = &mut self.metrics {
                 metrics.log_n_candidates(points_added);
                 metrics.log_cluster_time(cluster_start.elapsed());
@@ -214,47 +294,54 @@ where
     }
 
     pub fn enable_metrics(&mut self) -> Result<()> {
-
-        self.metrics = Some(
-            RunMetrics::new(self.config.clone(), self.data.num_points())
-        );
+        self.metrics = Some(RunMetrics::new(self.config.clone(), self.data.num_points()));
 
         Ok(())
     }
 
-    pub fn save_metrics(&mut self, 
+    pub fn save_metrics(
+        &mut self,
         db_path: String,
         granularity: MetricsGranularity,
         dataset_distances: &Array<f32, Ix2>,
         run_distances: &[Vec<f32>],
         dataset_len: usize,
         total_search_time: &Duration,
-    ) -> Result<()> {        
-        if !Self::db_exists(&db_path) {         
+    ) -> Result<()> {
+        if !Self::db_exists(&db_path) {
             eprintln!("No existing database in path {}", db_path);
         }
-        
+
         // Connect to the database
-        let conn_res = Connection::open(db_path).map_err(|e| ClusteredIndexError::ResultDBError(e.to_string()));
+        let conn_res = Connection::open(db_path)
+            .map_err(|e| ClusteredIndexError::ResultDBError(e.to_string()));
 
         match conn_res {
             Ok(mut conn) => {
                 if let Some(metrics) = &mut self.metrics {
-                    metrics.compute_run_statistics(dataset_distances, run_distances, dataset_len, total_search_time);
-                    
-                    return metrics.save_to_sqlite(&mut conn, granularity).map_err(|e| ClusteredIndexError::ResultDBError(e.to_string()));
-                }else{
+                    metrics.compute_run_statistics(
+                        dataset_distances,
+                        run_distances,
+                        dataset_len,
+                        total_search_time,
+                    );
+
+                    return metrics
+                        .save_to_sqlite(&mut conn, granularity)
+                        .map_err(|e| ClusteredIndexError::ResultDBError(e.to_string()));
+                } else {
                     warn!("Metrics not enabled!");
                 }
-            },
+            }
             Err(e) => return Err(e),
         }
 
         Ok(())
     }
-    
+
     fn sort_cluster_indices_by_distance(&mut self, query: &[T::DataType]) -> Vec<usize> {
-        let mut cluster_distances: Vec<(usize, f32)> = self.clusters
+        let mut cluster_distances: Vec<(usize, f32)> = self
+            .clusters
             .iter()
             .enumerate()
             .map(|(i, cluster)| {
@@ -264,28 +351,66 @@ where
             .collect();
 
         // TODO: we can remove some distance computations from the main loop
-        // since we compute each distance from the center to the query we dont actually 
+        // since we compute each distance from the center to the query we dont actually
         // need to redo it in the exit condition
         if let Some(metrics) = &mut self.metrics {
             metrics.add_distance_computation_global(cluster_distances.len());
         }
-    
+
         cluster_distances.sort_by(|&(_, dist_a), &(_, dist_b)| {
-            dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
+            dist_a
+                .partial_cmp(&dist_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
-    
+
         cluster_distances.into_iter().map(|(i, _)| i).collect()
     }
 
-    fn map_candidates(&self, candidates: &Vec<u32>, cluster: &ClusterCenter) -> Vec<usize> {
-        (*candidates)
+    fn map_candidates(&self, candidates: &[u32], cluster: &ClusterCenter) -> Result<Vec<usize>> {
+        let mapped: Vec<usize> = candidates
             .iter()
-            .map(|&local_idx| cluster.assignment[local_idx as usize])
-            .collect()
+            .map(|&local_idx| {
+                (local_idx as usize)
+                    .try_into()
+                    .map_err(|_| ClusteredIndexError::IndexMappingError(local_idx))
+            })
+            .filter_map(|res| res.ok())
+            .map(|local_idx| {
+                if local_idx < cluster.assignment.len() {
+                    Ok(cluster.assignment[local_idx])
+                } else {
+                    Err(ClusteredIndexError::IndexOutOfBounds(local_idx,cluster.assignment.len()))
+                }
+            })
+            .collect::<Result<Vec<usize>>>()?;
+    
+        Ok(mapped)
     }
 
     fn db_exists(db_file_path: &str) -> bool {
         // This function checks if a database file exists at the specified file path
         fs::metadata(db_file_path).is_ok()
+    }
+
+    // Simple brute force search for small clusters (under 500 points)
+    fn brute_force_search(
+        &self,
+        cluster: &ClusterCenter,
+        query: &[T::DataType],
+    ) -> Result<Vec<(f32, usize)>> {
+        let mut priority_queue = TopKClosestHeap::new(self.config.k);
+        let mut points_added = 0;
+        for p in &cluster.assignment {
+            let distance = self.data.distance_point(*p, query);
+            if priority_queue.add(Element {
+                distance: OrderedFloat(distance),
+                point_index: *p,
+            }) {
+                points_added += 1;
+            }
+        }
+
+        debug!("points added in brute force: {}", points_added);
+        Ok(priority_queue.to_list())
     }
 }

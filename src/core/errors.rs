@@ -21,4 +21,13 @@ pub enum ClusteredIndexError {
 
     #[error("PUFFINN Search Error: {0}")]
     PuffinnSearchError(String),
+
+    #[error("Index Not Found Error")]
+    IndexNotFound(),
+
+    #[error("Index Out of Bounds: {0} out of {1} length")]
+    IndexOutOfBounds(usize, usize),
+
+    #[error("Index Mapping Error: {0}")]
+    IndexMappingError(u32)
 }
