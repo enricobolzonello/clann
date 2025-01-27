@@ -141,6 +141,10 @@ where
             if cluster.brute_force {
                 self.puffinn_indices.push(None);
                 info!("Skipping cluster {}, will do brute force", cluster_idx);
+                if let Some(metrics) = &mut self.metrics {
+                    println!("here");
+                    metrics.add_greedy_cluster_count();
+                }
                 continue;
             }
 

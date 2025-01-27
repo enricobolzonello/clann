@@ -26,6 +26,7 @@ pub struct RunMetrics {
     pub cluster_sizes: Vec<usize>,  // Sizes of the clusters
     config: Config,
     dataset_len: usize,
+    greedy_clusters: usize,
     memory_used_bytes: usize,
     total_search_time_s: f32,
     queries_per_second: f32,
@@ -57,6 +58,7 @@ impl RunMetrics {
             recall_mean: 0.0,
             recall_std: 0.0,
             dataset_len,
+            greedy_clusters: 0,
         }
     }
 
@@ -92,6 +94,10 @@ impl RunMetrics {
         if let Some(query) = self.current_query_mut() {
             query.query_time = time;
         }
+    }
+
+    pub fn add_greedy_cluster_count(&mut self) {
+        self.greedy_clusters += 1;
     }
 
     pub fn add_distance_computation_global(&mut self, n_comp: usize) {
@@ -189,23 +195,29 @@ impl RunMetrics {
 
     fn sqlite_insert_clann_results(&self, conn: &Connection) -> Result<(), rusqlite::Error> {
         let current_time = chrono::Utc::now().to_rfc3339();
+        let total_clusters = self.cluster_sizes.len();
 
+        println!("total clusters: {}", total_clusters);
+        println!("greedy clusters: {}", self.greedy_clusters);
+    
         match conn.execute(
             "INSERT INTO clann_results (
-                num_clusters, 
-                kb_per_point, 
-                k, 
-                delta, 
-                dataset, 
+                num_clusters,
+                kb_per_point,
+                k,
+                delta,
+                dataset,
                 git_commit_hash,
-                dataset_len, 
-                memory_used_bytes, 
-                total_time_ms, 
-                queries_per_second, 
-                recall_mean, 
-                recall_std, 
-                created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                dataset_len,
+                memory_used_bytes,
+                total_time_ms,
+                queries_per_second,
+                recall_mean,
+                recall_std,
+                created_at,
+                total_num_clusters,
+                greedy_num_clusters
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 self.config.num_clusters_factor,
                 self.config.kb_per_point,
@@ -220,12 +232,12 @@ impl RunMetrics {
                 self.recall_mean,
                 self.recall_std,
                 current_time,
+                total_clusters,
+                self.greedy_clusters,
             ],
         ) {
             Ok(_) => Ok(()),
             Err(e) => {
-                // If it's a unique constraint violation, we can ignore it
-                // as it means we've already run this configuration
                 if let rusqlite::Error::SqliteFailure(error, Some(message)) = &e {
                     if error.code == rusqlite::ErrorCode::ConstraintViolation
                         && message.contains("UNIQUE constraint failed")

@@ -27,10 +27,9 @@ fn main() {
     };
 
     let mut index = init_with_config(data, config).unwrap();
+    enable_run_metrics(&mut index).unwrap();
 
     build(&mut index).map_err(|e| eprintln!("Error: {}", e)).unwrap();
-
-    enable_run_metrics(&mut index).unwrap();
 
     info!("Processing {} queries", queries.nrows());
     let search_start = Instant::now();

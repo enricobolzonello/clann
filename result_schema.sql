@@ -7,6 +7,8 @@ CREATE TABLE clann_results (
 	dataset TEXT NOT NULL, 
 	git_commit_hash CHAR(40) DEFAULT 'NO_COMMIT' NOT NULL, -- Using default instead of NULL,
 	dataset_len INTEGER,
+	total_num_clusters INTEGER NOT NULL DEFAULT 0,
+	greedy_num_clusters INTEGER NOT NULL DEFAULT 0,
 	memory_used_bytes INTEGER, 
 	total_time_ms INTEGER, 
 	queries_per_second REAL, 
