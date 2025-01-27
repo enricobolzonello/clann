@@ -42,13 +42,13 @@ fn run_benchmark_config_clann(
         }
     };
 
+    clustered_index
+        .enable_metrics()
+        .expect("Failed to enable metrics");
+
     // Skip build if it fails
     match build(&mut clustered_index) {
-        Ok(_) => {
-            clustered_index
-                .enable_metrics()
-                .expect("Failed to enable metrics");
-        }
+        Ok(_) => {}
         Err(e) => {
             eprintln!("Failed to build clustered index: {:?}", e);
             return Err(Box::new(e));
