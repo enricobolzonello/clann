@@ -10,7 +10,7 @@ use std::time::Duration;
 use metricdata::{MetricData, Subset};
 use ndarray::{Array, Ix2};
 use puffinn_binds::IndexableSimilarity;
-use utils::metrics::MetricsGranularity;
+use utils::MetricsGranularity;
 
 pub mod core;
 pub mod metricdata;

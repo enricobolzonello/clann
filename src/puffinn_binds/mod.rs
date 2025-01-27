@@ -4,3 +4,4 @@ pub mod puffinn_index;
 
 pub use self::puffinn_index::PuffinnIndex;
 pub use self::puffinn_types::IndexableSimilarity;
+pub use self::puffinn_index::get_distance_computations;

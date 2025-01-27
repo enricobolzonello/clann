@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use clann::{build, core::Config, enable_run_metrics, init_with_config, metricdata::{AngularData, MetricData}, save_metrics, search, utils::{load_hdf5_dataset, metrics::MetricsGranularity}};
+use clann::{build, core::Config, enable_run_metrics, init_with_config, metricdata::{AngularData, MetricData}, save_metrics, search, utils::{load_hdf5_dataset, MetricsGranularity}};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 

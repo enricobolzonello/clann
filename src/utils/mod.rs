@@ -1,8 +1,14 @@
+use std::fs;
+
 use hdf5::File;
 use log::debug;
 use ndarray::{Array, Ix1, Ix2};
 
 pub mod metrics;
+
+pub use metrics::MetricsGranularity;
+pub use metrics::QueryMetrics;
+pub use metrics::RunMetrics;
 
 pub fn load_hdf5_dataset(filepath: &str) -> Result<(Array<f32, Ix2>, Array<f32, Ix2>, Array<f32, Ix2>), String> {
     let file = File::open(filepath).map_err(|e| format!("Error opening file '{}': {}", filepath, e))?;
@@ -68,4 +74,8 @@ pub fn get_recall_values(
     };
 
     (mean_recall, std_recall, recalls)
+}
+
+pub fn db_exists(db_file_path: &str) -> bool {
+    fs::metadata(db_file_path).is_ok()
 }

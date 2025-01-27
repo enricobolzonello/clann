@@ -1,4 +1,3 @@
-use std::fs;
 use std::time::{Duration, Instant};
 
 use log::{debug, error, info, trace, warn};
@@ -9,21 +8,22 @@ use rusqlite::Connection;
 use crate::core::heap::Element;
 use crate::core::{ClusteredIndexError, Config, Result};
 use crate::metricdata::{MetricData, Subset};
-use crate::puffinn_binds::puffinn_index::get_distance_computations;
+use crate::puffinn_binds::get_distance_computations;
 use crate::puffinn_binds::IndexableSimilarity;
 use crate::puffinn_binds::PuffinnIndex;
-use crate::utils::metrics::{MetricsGranularity, RunMetrics};
+use crate::utils::db_exists;
+use crate::utils::{MetricsGranularity, RunMetrics};
 
 use super::gmm::greedy_minimum_maximum;
 use super::heap::TopKClosestHeap;
 
 #[derive(Clone)]
 struct ClusterCenter {
-    pub idx: usize, // index of the cluster, corresponds to the index of the vec of puffinn indexes
-    pub center_idx: usize, // index in the dataset for the center point
-    pub radius: f32, // radius of the cluster
-    pub assignment: Vec<usize>, // vector of indices in the dataset
-    pub brute_force: bool,
+    pub idx: usize,             // index of the cluster, corresponds to the index of the vec of puffinn indexes
+    pub center_idx: usize,      // index of the center point in the original dataset
+    pub radius: f32,            // radius of the cluster
+    pub assignment: Vec<usize>, // vector of indices to the original dataset for points assigned to this cluster
+    pub brute_force: bool,      // flag indicating if brute force is applied instead of puffinn (<500 points)
 }
 
 pub struct ClusteredIndex<T>
@@ -221,9 +221,9 @@ where
         let sorted_cluster = self.sort_cluster_indices_by_distance(query);
 
         let mut priority_queue = TopKClosestHeap::new(self.config.k);
-        let mut distance_computations = 0;
 
         for cluster_idx in sorted_cluster {
+            let mut distance_computations = 0;
             let cluster_start = Instant::now();
 
             let cluster = &self.clusters[cluster_idx];
@@ -247,6 +247,8 @@ where
 
             let mut points_added = 0;
             if cluster.brute_force {
+                // do brute force
+
                 let candidates = self.brute_force_search(cluster, query)?;
 
                 for (distance, p) in &candidates {
@@ -260,6 +262,7 @@ where
 
                 distance_computations += candidates.len();
             } else {
+                // do puffinn query algorithm
 
                 let candidates = match &self.puffinn_indices[cluster.idx] {
                     Some(index) => {
@@ -270,6 +273,7 @@ where
                     }
                 };
 
+                // map puffinn result to the original dataset
                 let mapped_candidates: Vec<usize> = self.map_candidates(&candidates, cluster)?;
 
                 for p in mapped_candidates {
@@ -297,22 +301,32 @@ where
         Ok(priority_queue.to_list())
     }
 
+    /// Enables run metrics collection
     pub fn enable_metrics(&mut self) -> Result<()> {
         self.metrics = Some(RunMetrics::new(self.config.clone(), self.data.num_points()));
 
         Ok(())
     }
 
+    /// Saves metrics to the specified sqlite3 database with the desired granularity. For example, if you select [`MetricsGranularity::Run`] only metrics for the whole run, like recall or total search time, are saved.
+    /// 
+    /// # Parameters
+    /// - `db_path`: Path to the sqlite3 database
+    /// - `granularity`: [`MetricsGranularity`] to specify which metrics need to be saved
+    /// - `ground_truth_distances`: Ground truth distances to calculate recall
+    /// - `run_distances`: Final distances returned by the search algorithm for all queries
+    /// - `dataset_len`: Length of the train dataset
+    /// - `total_search_time`: Search time for all queries
     pub fn save_metrics(
         &mut self,
         db_path: String,
         granularity: MetricsGranularity,
-        dataset_distances: &Array<f32, Ix2>,
+        ground_truth_distances: &Array<f32, Ix2>,
         run_distances: &[Vec<f32>],
         dataset_len: usize,
         total_search_time: &Duration,
     ) -> Result<()> {
-        if !Self::db_exists(&db_path) {
+        if !db_exists(&db_path) {
             eprintln!("No existing database in path {}", db_path);
         }
 
@@ -324,7 +338,7 @@ where
             Ok(mut conn) => {
                 if let Some(metrics) = &mut self.metrics {
                     metrics.compute_run_statistics(
-                        dataset_distances,
+                        ground_truth_distances,
                         run_distances,
                         dataset_len,
                         total_search_time,
@@ -343,14 +357,15 @@ where
         Ok(())
     }
 
+    /// Helper to sort clusters in ascending order by distance from the query point
+    /// Returns only the indices
     fn sort_cluster_indices_by_distance(&mut self, query: &[T::DataType]) -> Vec<usize> {
         let mut cluster_distances: Vec<(usize, f32)> = self
             .clusters
             .iter()
-            .enumerate()
-            .map(|(i, cluster)| {
+            .map(|cluster| {
                 let dist = self.data.distance_point(cluster.center_idx, query);
-                (i, dist)
+                (cluster.idx, dist)
             })
             .collect();
 
@@ -389,11 +404,6 @@ where
             .collect::<Result<Vec<usize>>>()?;
     
         Ok(mapped)
-    }
-
-    fn db_exists(db_file_path: &str) -> bool {
-        // This function checks if a database file exists at the specified file path
-        fs::metadata(db_file_path).is_ok()
     }
 
     // Simple brute force search for small clusters (under 500 points)
