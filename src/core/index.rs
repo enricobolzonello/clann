@@ -9,6 +9,7 @@ use crate::core::heap::Element;
 use crate::core::{ClusteredIndexError, Config, Result};
 use crate::metricdata::{MetricData, Subset};
 use crate::puffinn_binds::get_distance_computations;
+use crate::puffinn_binds::puffinn_index::clear_distance_computations;
 use crate::puffinn_binds::IndexableSimilarity;
 use crate::puffinn_binds::PuffinnIndex;
 use crate::utils::db_exists;
@@ -206,6 +207,7 @@ where
     pub fn search(&mut self, query: &[T::DataType]) -> Result<Vec<(f32, usize)>> {
         if let Some(metrics) = &mut self.metrics {
             metrics.new_query();
+            clear_distance_computations();
         }
 
         debug!(

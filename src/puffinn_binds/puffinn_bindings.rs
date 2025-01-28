@@ -50,3 +50,6 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn CPUFFINN_get_distance_computations() -> cty::c_uint;
 }
+unsafe extern "C" {
+    pub fn CPUFFINN_clear_distance_computations();
+}

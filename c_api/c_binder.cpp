@@ -61,4 +61,8 @@ extern "C" {
     unsigned int CPUFFINN_get_distance_computations() {
         return puffinn::g_performance_metrics.get_distance_computations();
     }
+    
+    void CPUFFINN_clear_distance_computations() {
+        puffinn::g_performance_metrics.clear();
+    }
 }

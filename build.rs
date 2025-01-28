@@ -35,7 +35,6 @@ fn main() {
         .flag("-O3")
         .flag("-fopenmp");
 
-    // Print the actual commands being run (helpful for debugging)
     build.debug(true);
     
     // Attempt to compile
@@ -51,16 +50,13 @@ fn main() {
         .header(header_file.to_str().expect("Invalid header path"))
         .clang_arg(format!("-I{}", puffinn_include_dir.display()))
         .clang_arg(format!("-I{}", c_api_dir.display()))
-        // Only pass C-compatible flags to bindgen
         .clang_arg("-Wall")
         .clang_arg("-Wextra")
-        // Enable C++ processing
         .clang_arg("-x")
         .clang_arg("c++")
         .clang_arg("-std=c++14")
         // Trust the C declarations as is
         .trust_clang_mangling(true)
-        // Parse only the C-compatible declarations
         .generate_comments(true)
         .generate()
         .expect("Unable to generate bindings");
@@ -71,4 +67,7 @@ fn main() {
 
     // Link against OpenMP
     println!("cargo:rustc-link-lib=gomp");
+
+    // rebuild if there is a commit
+    println!("cargo:rerun-if-changed=.git/HEAD");
 }

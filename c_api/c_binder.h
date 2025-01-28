@@ -18,4 +18,5 @@ extern "C" {
     uint32_t* CPUFFINN_search_uint32(CPUFFINN* index, uint32_t* query, unsigned int k, float recall, int dimension);
 
     unsigned int CPUFFINN_get_distance_computations();
+    void CPUFFINN_clear_distance_computations();
 }
