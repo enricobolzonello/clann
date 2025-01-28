@@ -142,7 +142,6 @@ where
                 self.puffinn_indices.push(None);
                 info!("Skipping cluster {}, will do brute force", cluster_idx);
                 if let Some(metrics) = &mut self.metrics {
-                    println!("here");
                     metrics.add_greedy_cluster_count();
                 }
                 continue;
@@ -196,8 +195,6 @@ where
             "Build process completed. Total clusters: {}, Indexing time: {:.2?}",
             total_clusters, indexing_duration
         );
-
-        println!("len: {}", self.puffinn_indices.len());
 
         Ok(())
     }

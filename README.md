@@ -10,5 +10,10 @@ The algorithm is built on top of PUFFINN, which was built on C++. To achieve Rus
 - Clang 9.0 or greater
 - A valid OpenMP installation, what worked for me is to install the development package, even though a OpenMP installation for GCC already exists: 
 `sudo apt install libomp-dev `
-
 At this point, all you need to do is do `cargo build` and it should automatically compile.
+
+Alternatively, an easier way is to use [NixOS](https://nixos.org/). If Nix is installed, just run the command:
+```
+nix develop
+```
+and then a `cargo build`.

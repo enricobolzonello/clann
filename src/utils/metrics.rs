@@ -196,9 +196,6 @@ impl RunMetrics {
     fn sqlite_insert_clann_results(&self, conn: &Connection) -> Result<(), rusqlite::Error> {
         let current_time = chrono::Utc::now().to_rfc3339();
         let total_clusters = self.cluster_sizes.len();
-
-        println!("total clusters: {}", total_clusters);
-        println!("greedy clusters: {}", self.greedy_clusters);
     
         match conn.execute(
             "INSERT INTO clann_results (

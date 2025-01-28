@@ -10,6 +10,7 @@ use clann::utils::load_hdf5_dataset;
 use clann::utils::metrics::MetricsGranularity;
 use clann::{build, init_with_config, save_metrics, search};
 use criterion::{criterion_group, criterion_main, Criterion};
+use env_logger::Env;
 use rusqlite::{params, Connection};
 
 use std::time::{Duration, Instant};
@@ -255,6 +256,10 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
 }
 
 pub fn run_distance_benchmarks(_c: &mut Criterion) {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .init();
+
     print_benchmark_header("PUFFINN-CLANN Distance Computations Comparison");
     let pb = create_progress_bar("Running distance comparison".to_string(), 100);
     compare_implementations_distance().expect("Error in compare implem");
