@@ -215,7 +215,7 @@ where
             self.config.k, self.config.delta
         );
 
-        let delta_prime = 1.0 - (1.0 - self.config.delta) / (self.clusters.len() as f32);
+        //let delta_prime = 1.0 - (1.0 - self.config.delta) / (self.clusters.len() as f32);
 
         let sorted_cluster = self.sort_cluster_indices_by_distance(query);
 
@@ -265,7 +265,7 @@ where
 
                 let candidates = match &self.puffinn_indices[cluster.idx] {
                     Some(index) => {
-                        index.search::<T>(query, self.config.k, delta_prime).map_err(ClusteredIndexError::PuffinnSearchError)?
+                        index.search::<T>(query, self.config.k, self.config.delta).map_err(ClusteredIndexError::PuffinnSearchError)?
                     },
                     None => {
                         return Err(ClusteredIndexError::IndexNotFound());

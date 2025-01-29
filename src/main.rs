@@ -69,10 +69,6 @@ fn main() {
         }
         
         progress_bar.inc(1);
-
-        if i == 2 {
-            break;
-        }
     }
 
     progress_bar.finish_with_message("Search complete");
