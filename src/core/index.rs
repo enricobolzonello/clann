@@ -215,11 +215,13 @@ where
             self.config.k, self.config.delta
         );
 
-        //let delta_prime = 1.0 - (1.0 - self.config.delta) / (self.clusters.len() as f32);
+        let delta_prime = 1.0 - (1.0 - self.config.delta) / (self.clusters.len() as f32);
 
         let sorted_cluster = self.sort_cluster_indices_by_distance(query);
 
         let mut priority_queue = TopKClosestHeap::new(self.config.k);
+
+        let mut last_points_added = 0;
 
         for cluster_idx in sorted_cluster {
             let mut distance_computations = 0;
@@ -227,14 +229,17 @@ where
 
             let cluster = &self.clusters[cluster_idx];
 
+            // exit conditions
+            // 1. if there are no more possible nearest neighbor stop
+            // 2. heuristic, if the last cluster didnt add any new points return
             if let Some(top) = priority_queue.get_top() {
+                // skips the first iteration so i dont have to worry about last_points being zero
                 // log the distance computation of the exit condition
                 distance_computations += 1;
-
-                // TODO
+                
                 let cluster_min_distance =
                     self.data.distance_point(cluster.center_idx, query) - cluster.radius;
-                if cluster_min_distance > top.1 {
+                if last_points_added == 0 || cluster_min_distance > top.1 {
                     if let Some(metrics) = &mut self.metrics {
                         metrics.add_distance_computation_cluster(distance_computations);
                         metrics.log_cluster_time(cluster_start.elapsed());
@@ -265,7 +270,7 @@ where
 
                 let candidates = match &self.puffinn_indices[cluster.idx] {
                     Some(index) => {
-                        index.search::<T>(query, self.config.k, self.config.delta).map_err(ClusteredIndexError::PuffinnSearchError)?
+                        index.search::<T>(query, self.config.k, delta_prime).map_err(ClusteredIndexError::PuffinnSearchError)?
                     },
                     None => {
                         return Err(ClusteredIndexError::IndexNotFound());
@@ -295,6 +300,8 @@ where
                 metrics.log_cluster_time(cluster_start.elapsed());
                 metrics.add_distance_computation_cluster(distance_computations);
             }
+
+            last_points_added = points_added;
         }
 
         Ok(priority_queue.to_list())
