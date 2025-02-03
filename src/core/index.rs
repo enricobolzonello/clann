@@ -20,11 +20,11 @@ use super::heap::TopKClosestHeap;
 
 #[derive(Clone)]
 struct ClusterCenter {
-    pub idx: usize,             // index of the cluster, corresponds to the index of the vec of puffinn indexes
-    pub center_idx: usize,      // index of the center point in the original dataset
-    pub radius: f32,            // radius of the cluster
+    pub idx: usize, // index of the cluster, corresponds to the index of the vec of puffinn indexes
+    pub center_idx: usize, // index of the center point in the original dataset
+    pub radius: f32, // radius of the cluster
     pub assignment: Vec<usize>, // vector of indices to the original dataset for points assigned to this cluster
-    pub brute_force: bool,      // flag indicating if brute force is applied instead of puffinn (<500 points)
+    pub brute_force: bool, // flag indicating if brute force is applied instead of puffinn (<500 points)
 }
 
 pub struct ClusteredIndex<T>
@@ -210,7 +210,7 @@ where
             clear_distance_computations();
         }
 
-        debug!(
+        info!(
             "Starting search procedure with parameters k={} and delta={:.2}",
             self.config.k, self.config.delta
         );
@@ -224,6 +224,7 @@ where
         let mut last_points_added = 0;
 
         for cluster_idx in sorted_cluster {
+            dbg!(cluster_idx);
             let mut distance_computations = 0;
             let cluster_start = Instant::now();
 
@@ -233,13 +234,14 @@ where
             // 1. if there are no more possible nearest neighbor stop
             // 2. heuristic, if the last cluster didnt add any new points return
             if let Some(top) = priority_queue.get_top() {
+                dbg!(top);
                 // skips the first iteration so i dont have to worry about last_points being zero
                 // log the distance computation of the exit condition
                 distance_computations += 1;
-                
+
                 let cluster_min_distance =
                     self.data.distance_point(cluster.center_idx, query) - cluster.radius;
-                if last_points_added == 0 || cluster_min_distance > top.1 {
+                if cluster_min_distance > top.1 {
                     if let Some(metrics) = &mut self.metrics {
                         metrics.add_distance_computation_cluster(distance_computations);
                         metrics.log_cluster_time(cluster_start.elapsed());
@@ -269,9 +271,9 @@ where
                 // do puffinn query algorithm
 
                 let candidates = match &self.puffinn_indices[cluster.idx] {
-                    Some(index) => {
-                        index.search::<T>(query, self.config.k, delta_prime).map_err(ClusteredIndexError::PuffinnSearchError)?
-                    },
+                    Some(index) => index
+                        .search::<T>(query, self.config.k, delta_prime)
+                        .map_err(ClusteredIndexError::PuffinnSearchError)?,
                     None => {
                         return Err(ClusteredIndexError::IndexNotFound());
                     }
@@ -280,8 +282,16 @@ where
                 // map puffinn result to the original dataset
                 let mapped_candidates: Vec<usize> = self.map_candidates(&candidates, cluster)?;
 
+                let mut min_dist_cluster = f32::INFINITY;
+                let mut max_dist_cluster = f32::NEG_INFINITY;
                 for p in mapped_candidates {
                     let distance = self.data.distance_point(p, query);
+                    if distance < min_dist_cluster {
+                        min_dist_cluster = distance;
+                    }
+                    if distance > max_dist_cluster {
+                        max_dist_cluster = distance;
+                    }
                     if priority_queue.add(Element {
                         distance: OrderedFloat(distance),
                         point_index: p,
@@ -289,6 +299,7 @@ where
                         points_added += 1;
                     }
                 }
+                dbg!(points_added, min_dist_cluster, max_dist_cluster);
 
                 distance_computations += get_distance_computations() as usize;
             }
@@ -315,7 +326,7 @@ where
     }
 
     /// Saves metrics to the specified sqlite3 database with the desired granularity. For example, if you select [`MetricsGranularity::Run`] only metrics for the whole run, like recall or total search time, are saved.
-    /// 
+    ///
     /// # Parameters
     /// - `db_path`: Path to the sqlite3 database
     /// - `granularity`: [`MetricsGranularity`] to specify which metrics need to be saved
@@ -404,11 +415,14 @@ where
                 if local_idx < cluster.assignment.len() {
                     Ok(cluster.assignment[local_idx])
                 } else {
-                    Err(ClusteredIndexError::IndexOutOfBounds(local_idx,cluster.assignment.len()))
+                    Err(ClusteredIndexError::IndexOutOfBounds(
+                        local_idx,
+                        cluster.assignment.len(),
+                    ))
                 }
             })
             .collect::<Result<Vec<usize>>>()?;
-    
+
         Ok(mapped)
     }
 
