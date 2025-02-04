@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{env, time::Instant};
 
 use clann::{build, core::Config, enable_run_metrics, init_with_config, metricdata::{AngularData, MetricData}, save_metrics, search, utils::{load_hdf5_dataset, MetricsGranularity}};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -8,6 +8,8 @@ fn main() {
     env_logger::Builder::from_default_env()
         .format_timestamp_millis()
         .init();
+
+    let args: Vec<String> = env::args().collect();
 
     info!("Starting search benchmark");
     let total_start = Instant::now();
@@ -20,7 +22,7 @@ fn main() {
 
     let config = Config{
         kb_per_point: 1,
-        num_clusters_factor: 0.4,
+        num_clusters_factor: 0.2,
         k: 10,
         delta: 0.9,
         dataset_name: "glove-25-angular".to_owned(),
@@ -82,15 +84,17 @@ fn main() {
     info!("Total results: {}", distance_results.len());
 
     // Save metrics
-    info!("Saving metrics to {}", DB_PATH);
-    save_metrics(&mut index, 
-        DB_PATH,
-        MetricsGranularity::Cluster,
-        &ground_truth_distances,
-        &distance_results,
-        n,
-        &total_search_time
-    ).unwrap();
+    if args.len() > 2 && &args[1] == "save" {
+        info!("Saving metrics to {}", DB_PATH);
+        save_metrics(&mut index, 
+            DB_PATH,
+            MetricsGranularity::Cluster,
+            &ground_truth_distances,
+            &distance_results,
+            n,
+            &total_search_time
+        ).unwrap();
+    }
 
     info!("Benchmark completed in {:?}", total_start.elapsed());
 }

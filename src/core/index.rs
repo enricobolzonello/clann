@@ -210,7 +210,7 @@ where
             clear_distance_computations();
         }
 
-        info!(
+        debug!(
             "Starting search procedure with parameters k={} and delta={:.2}",
             self.config.k, self.config.delta
         );
@@ -221,10 +221,10 @@ where
 
         let mut priority_queue = TopKClosestHeap::new(self.config.k);
 
-        let mut last_points_added = 0;
+        let mut max_dist = 0.0;
 
         for cluster_idx in sorted_cluster {
-            dbg!(cluster_idx);
+            debug!("cluster index: {}", cluster_idx);
             let mut distance_computations = 0;
             let cluster_start = Instant::now();
 
@@ -234,7 +234,10 @@ where
             // 1. if there are no more possible nearest neighbor stop
             // 2. heuristic, if the last cluster didnt add any new points return
             if let Some(top) = priority_queue.get_top() {
-                dbg!(top);
+                debug!("top: {:?}", top);
+                
+                max_dist = top.1;
+
                 // skips the first iteration so i dont have to worry about last_points being zero
                 // log the distance computation of the exit condition
                 distance_computations += 1;
@@ -272,7 +275,12 @@ where
 
                 let candidates = match &self.puffinn_indices[cluster.idx] {
                     Some(index) => index
-                        .search::<T>(query, self.config.k, delta_prime)
+                        .search::<T>(
+                            query, 
+                            self.config.k, 
+                            max_dist,
+                            delta_prime
+                        )
                         .map_err(ClusteredIndexError::PuffinnSearchError)?,
                     None => {
                         return Err(ClusteredIndexError::IndexNotFound());
@@ -299,7 +307,7 @@ where
                         points_added += 1;
                     }
                 }
-                dbg!(points_added, min_dist_cluster, max_dist_cluster);
+                debug!("points_added = {}, min_dist = {}, max_dist = {}", points_added, min_dist_cluster, max_dist_cluster);
 
                 distance_computations += get_distance_computations() as usize;
             }
@@ -311,8 +319,6 @@ where
                 metrics.log_cluster_time(cluster_start.elapsed());
                 metrics.add_distance_computation_cluster(distance_computations);
             }
-
-            last_points_added = points_added;
         }
 
         Ok(priority_queue.to_list())

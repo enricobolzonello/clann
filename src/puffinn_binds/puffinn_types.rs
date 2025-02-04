@@ -23,6 +23,7 @@ pub trait IndexableSimilarity<M: MetricData> {
         query: *const M::DataType,
         k: u32,
         recall: f32,
+        max_sim: f32,
         dimension: i32,
     ) -> *mut u32;
 }
@@ -46,8 +47,9 @@ impl<S: Data<Elem = f32>, M: MetricData> IndexableSimilarity<M> for AngularData<
         query: *const M::DataType,
         k: u32,
         recall: f32,
+        max_sim: f32,
         dimension: i32,
     ) -> *mut u32 {
-        CPUFFINN_search_float(raw, query as *mut f32, k, recall, dimension)
+        CPUFFINN_search_float(raw, query as *mut f32, k, recall, max_sim, dimension)
     }
 }

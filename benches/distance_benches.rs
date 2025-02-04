@@ -13,6 +13,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use env_logger::Env;
 use rusqlite::{params, Connection};
 
+use core::f32;
 use std::time::{Duration, Instant};
 use utils::db_utils::{
     check_configuration_exists_clann, check_configuration_exists_puffinn, BenchmarkError,
@@ -119,7 +120,7 @@ fn run_benchmark_config_puffinn(
 
         let query_query_start = Instant::now();
         base_index
-            .search::<AngularData<ndarray::OwnedRepr<f32>>>(query_slice, config.k, config.delta)
+            .search::<AngularData<ndarray::OwnedRepr<f32>>>(query_slice, config.k, f32::INFINITY,config.delta)
             .expect("PUFFINN search failed");
         let query_time = query_query_start.elapsed();
 

@@ -52,8 +52,12 @@ impl PuffinnIndex {
         &self,
         query: &[M::DataType],
         k: usize,
+        max_dist: f32,
         recall: f32,
     ) -> Result<Vec<u32>, String> {
+
+        // convert distance into similarity
+        let max_sim = 1.0 - max_dist/2.0;
 
         unsafe {
             
@@ -62,6 +66,7 @@ impl PuffinnIndex {
                 query.as_ptr(),
                 k as u32,
                 recall,
+                max_sim,
                 query.len() as i32,
             );
 

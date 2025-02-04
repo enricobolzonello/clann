@@ -12,6 +12,7 @@ use criterion::{
 };
 use rand::{seq::SliceRandom, thread_rng};
 use utils::{create_progress_bar, load_configs_from_file, print_benchmark_header};
+use core::f32;
 use std::time::Duration;
 
 mod utils;
@@ -85,7 +86,7 @@ pub fn compare_implementations_time(c: &mut Criterion) {
                 |b, q| {
                     b.iter(|| {
                         base_index
-                            .search::<AngularData<ndarray::OwnedRepr<f32>>>(q, config.k, config.delta)
+                            .search::<AngularData<ndarray::OwnedRepr<f32>>>(q, config.k, f32::INFINITY, config.delta)
                             .unwrap()
                     });
                 },

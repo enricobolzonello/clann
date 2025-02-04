@@ -28,6 +28,7 @@ unsafe extern "C" {
         query: *mut f32,
         k: cty::c_uint,
         recall: f32,
+        max_sim: f32,
         dimension: cty::c_int,
     ) -> *mut u32;
 }
@@ -44,6 +45,7 @@ unsafe extern "C" {
         query: *mut u32,
         k: cty::c_uint,
         recall: f32,
+        max_sim: f32,
         dimension: cty::c_int,
     ) -> *mut u32;
 }

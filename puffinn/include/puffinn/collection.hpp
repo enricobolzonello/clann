@@ -341,11 +341,12 @@ namespace puffinn {
             const T& query,
             unsigned int k,
             float recall,
+            float max_sim,
             FilterType filter_type = FilterType::Default
         ) {
             auto desc = dataset.get_description();
             auto stored_query = to_stored_type<typename TSim::Format>(query, desc);
-            return search_formatted_query(stored_query.get(), k, recall, filter_type);
+            return search_formatted_query(stored_query.get(), k, recall, max_sim, filter_type);
         }
 
         /// Search for the approximate ``k`` nearest neighbors to a value already inserted into the index.
@@ -357,10 +358,11 @@ namespace puffinn {
             uint32_t idx,
             unsigned int k,
             float recall,
+            float max_sim,
             FilterType filter_type = FilterType::Default
         ) {
             // search for one more as the query will be part of the result set.
-            auto res = search_formatted_query(dataset[idx], k+1, recall, filter_type);
+            auto res = search_formatted_query(dataset[idx], k+1, recall, max_sim, filter_type);
             if (res.size() != 0 && res[0] == idx) {
                 res.erase(res.begin());
             } else {
@@ -558,6 +560,7 @@ namespace puffinn {
             typename TSim::Format::Type* query,
             unsigned int k,
             float recall,
+            float max_sim,
             FilterType filter_type
         ) {
             if (dataset.get_size() < 100) {
@@ -601,6 +604,7 @@ namespace puffinn {
                         query, 
                         maxbuffer, 
                         recall, 
+                        max_sim,
                         this->query_sketches, 
                         this->query_hashes
                     );
@@ -781,6 +785,7 @@ namespace puffinn {
             typename TSim::Format::Type* query,
             MaxBuffer& maxbuffer,
             float recall,
+            float max_sim,
             QuerySketches sketches,
             // TODO Make const
             std::vector<uint64_t> & query_hashes
@@ -943,7 +948,7 @@ namespace puffinn {
                         depth,
                         table_idx,
                         last_tables,
-                        kth_similarity
+                        std::max(kth_similarity, max_sim)
                     );
                     g_performance_metrics.store_time(Computation::CheckTermination);
                     if (failure_prob <= 1-recall) {
