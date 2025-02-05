@@ -233,6 +233,7 @@ dependencies = [
  "log",
  "ndarray",
  "ordered-float",
+ "pkg-config",
  "rand",
  "rusqlite",
  "serde",
@@ -499,9 +500,9 @@ dependencies = [
 
 [[package]]
 name = "hdf5-metno"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ebd69929f2957bf00cba9ad261a69e9fca9484b24d2e7c7f31227112c329624"
+checksum = "44c9b4d0d095403ced0b9d8b727c55212f1d09526944d84b8d3dca02ee3c0a82"
 dependencies = [
  "bitflags",
  "cfg-if",
@@ -538,9 +539,9 @@ dependencies = [
 
 [[package]]
 name = "hdf5-metno-sys"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aea1a139deeb3275e420092a6b2c4ca638e1a71aeb0251d18dc676871d6da269"
+checksum = "de20d5ba22c244493bdfefb91d8e9de08e3e58d96a792532da5e0df545aed279"
 dependencies = [
  "hdf5-metno-src",
  "libc",
@@ -612,9 +613,9 @@ dependencies = [
 
 [[package]]
 name = "indicatif"
-version = "0.17.9"
+version = "0.17.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbf675b85ed934d3c67b5c5469701eec7db22689d0a2139d856e0925fa28b281"
+checksum = "183b3088984b400f4cfac3620d5e076c84da5364016b4f49473de574b2586235"
 dependencies = [
  "console",
  "number_prefix",

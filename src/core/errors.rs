@@ -29,5 +29,8 @@ pub enum ClusteredIndexError {
     IndexOutOfBounds(usize, usize),
 
     #[error("Index Mapping Error: {0}")]
-    IndexMappingError(u32)
+    IndexMappingError(u32),
+
+    #[error("Serialize Error: {0}")]
+    SerializeError(String),
 }

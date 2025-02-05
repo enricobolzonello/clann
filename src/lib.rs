@@ -17,6 +17,14 @@ pub mod metricdata;
 pub mod puffinn_binds;
 pub mod utils;
 
+pub fn init_from_file<T>(data: T, file_path: &str) -> Result<ClusteredIndex<T>>
+where
+    T: MetricData + IndexableSimilarity<T> + Subset,
+    <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
+{
+    ClusteredIndex::new_from_file(data, file_path)
+}
+
 pub fn init<T>(data: T) -> Result<ClusteredIndex<T>>
 where
     T: MetricData + IndexableSimilarity<T> + Subset,
@@ -78,4 +86,15 @@ where
         dataset_len,
         total_search_time,
     )
+}
+
+pub fn serialize<T>(
+    index: &ClusteredIndex<T>,
+    directory_path: &str,
+) -> Result<()>
+where
+    T: MetricData + IndexableSimilarity<T> + Subset,
+    <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
+{
+    index.serialize(directory_path)
 }

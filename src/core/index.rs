@@ -1,9 +1,14 @@
+use std::fs;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
+use hdf5::types::{VarLenAscii, VarLenUnicode};
+use hdf5::File;
 use log::{debug, error, info, trace, warn};
 use ndarray::{Array, Ix2};
 use ordered_float::OrderedFloat;
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 
 use crate::core::heap::Element;
 use crate::core::{ClusteredIndexError, Config, Result};
@@ -18,7 +23,7 @@ use crate::utils::{MetricsGranularity, RunMetrics};
 use super::gmm::greedy_minimum_maximum;
 use super::heap::TopKClosestHeap;
 
-#[derive(Clone)]
+#[derive(Debug,Clone, Serialize, Deserialize)]
 struct ClusterCenter {
     pub idx: usize, // index of the cluster, corresponds to the index of the vec of puffinn indexes
     pub center_idx: usize, // index of the center point in the original dataset
@@ -74,6 +79,65 @@ where
             clusters: Vec::with_capacity(k),
             config,
             puffinn_indices: Vec::with_capacity(k),
+            metrics: None,
+        })
+    }
+
+    pub fn new_from_file(data: T, file_path: &str) -> Result<Self> {
+        if !Path::new(file_path).exists() {
+            return Err(ClusteredIndexError::ConfigError(format!(
+                "file {} not found",
+                file_path
+            )));
+        }
+
+        let file =
+            File::open(file_path).map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+        let root = file
+            .group("/")
+            .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+
+        // read config
+        let config_dataset = root
+            .dataset("config")
+            .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+        let config_ascii = config_dataset
+            .read_scalar::<VarLenAscii>()
+            .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+        let config: Config = serde_json::from_str(config_ascii.as_str())
+            .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+        
+        // read cluster centers
+        let cluster_dataset = root
+            .dataset("clusters")
+            .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+        let cluster_ascii = cluster_dataset
+            .read_scalar::<VarLenAscii>()
+            .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+        let clusters: Vec<ClusterCenter> = serde_json::from_str(cluster_ascii.as_str())
+            .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+
+        // read puffinn indices
+        let mut puffinn_indices = Vec::new();
+        for c in &clusters {
+            if !c.brute_force {
+                // TODO: load puffinn index
+                let index = PuffinnIndex::new_from_file(
+                    file_path, 
+                    &format!("index_{}", c.idx)
+                ).unwrap();
+                puffinn_indices.push(Some(index));
+            }else{
+                puffinn_indices.push(None);
+            }
+        }
+        
+
+        Ok(Self {
+            data,
+            clusters,
+            config,
+            puffinn_indices,
             metrics: None,
         })
     }
@@ -235,7 +299,7 @@ where
             // 2. heuristic, if the last cluster didnt add any new points return
             if let Some(top) = priority_queue.get_top() {
                 debug!("top: {:?}", top);
-                
+
                 max_dist = top.1;
 
                 // skips the first iteration so i dont have to worry about last_points being zero
@@ -275,12 +339,7 @@ where
 
                 let candidates = match &self.puffinn_indices[cluster.idx] {
                     Some(index) => index
-                        .search::<T>(
-                            query, 
-                            self.config.k, 
-                            max_dist,
-                            delta_prime
-                        )
+                        .search::<T>(query, self.config.k, max_dist, delta_prime)
                         .map_err(ClusteredIndexError::PuffinnSearchError)?,
                     None => {
                         return Err(ClusteredIndexError::IndexNotFound());
@@ -307,7 +366,10 @@ where
                         points_added += 1;
                     }
                 }
-                debug!("points_added = {}, min_dist = {}, max_dist = {}", points_added, min_dist_cluster, max_dist_cluster);
+                debug!(
+                    "points_added = {}, min_dist = {}, max_dist = {}",
+                    points_added, min_dist_cluster, max_dist_cluster
+                );
 
                 distance_computations += get_distance_computations() as usize;
             }
@@ -375,6 +437,54 @@ where
                 }
             }
             Err(e) => return Err(e),
+        }
+
+        Ok(())
+    }
+
+    pub fn serialize(&self, directory: &str) -> Result<()> {
+        if !fs::metadata(directory).is_ok() {
+            return Err(ClusteredIndexError::SerializeError(format!(
+                "directory {} doesn't exist",
+                directory
+            )));
+        }
+
+        let file_path = format!(
+            "{}/index_{}_k{:.2}_kb{}.h5",
+            directory,
+            self.config.dataset_name,
+            self.config.num_clusters_factor,
+            self.config.kb_per_point
+        );
+        let file = File::create(file_path.clone())
+            .map_err(|e| ClusteredIndexError::SerializeError(e.to_string()))?;
+
+        // write Config
+        let config_json = serde_json::to_string(&self.config).unwrap();
+        let config_ascii = VarLenAscii::from_ascii(&config_json).unwrap();
+        file.new_dataset::<VarLenAscii>()
+            .create("config")
+            .unwrap()
+            .write_scalar(&config_ascii)
+            .map_err(|e| ClusteredIndexError::SerializeError(e.to_string()))?;
+
+        // write all ClusterCenter
+        let clusters_json = serde_json::to_string(&self.clusters).unwrap();
+        let clusters_ascii = VarLenAscii::from_ascii(&clusters_json).unwrap();
+        file.new_dataset::<VarLenUnicode>()
+            .create("clusters")
+            .unwrap()
+            .write_scalar(&clusters_ascii)
+            .map_err(|e| ClusteredIndexError::SerializeError(e.to_string()))?;
+
+        // write all puffinn indexes
+        for (index_id, puffinn_index) in self.puffinn_indices.iter().enumerate() {
+            if let Some(index) = puffinn_index {
+                index
+                    .save_to_file(&file_path, index_id)
+                    .map_err(|e| ClusteredIndexError::SerializeError(e))?;
+            }
         }
 
         Ok(())

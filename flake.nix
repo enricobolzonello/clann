@@ -47,10 +47,14 @@
         buildInputs = [
           pkgs.llvmPackages.libcxx
           pkgs.sqlite
+          pkgs.hdf5
         ];
         packages = with pkgs; [
           rustToolchain
           sqlite
+          hdf5
+          hdf5.dev
+          pkg-config
         ];
 
         LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";

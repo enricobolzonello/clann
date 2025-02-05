@@ -8,8 +8,8 @@ chrono = "0.4.39"
 csv = "1.3.1"
 cty = "0.2.2"
 env_logger = "0.11.6"
-hdf5 = { package = "hdf5-metno", version = "0.9.0", features = ["static"]}
-indicatif = "0.17.9"
+hdf5 = { package = "hdf5-metno", version = "0.9.4", features = ["static"]}
+indicatif = "0.17.11"
 libc = "0.2"
 log = "0.4.25"
 ndarray = "0.16.1"
@@ -22,6 +22,7 @@ rusqlite = { version = "0.33.0", features = ["bundled", "chrono"] }
 [build-dependencies]
 bindgen = "0.71.1"
 cc = { version = "1.2.7", features = ["parallel"] }
+pkg-config = "0.3.31"
 
 [dev-dependencies]
 criterion = "0.5.1"

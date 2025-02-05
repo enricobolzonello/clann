@@ -1,5 +1,7 @@
 use super::puffinn_bindings::{
-    CPUFFINN_get_distance_computations, CPUFFINN_clear_distance_computations, CPUFFINN_index_create, CPUFFINN_index_rebuild, CPUFFINN
+    CPUFFINN_clear_distance_computations, CPUFFINN_get_distance_computations,
+    CPUFFINN_index_create, CPUFFINN_index_rebuild, CPUFFINN_load_from_file, CPUFFINN_save_index,
+    CPUFFINN,
 };
 use super::puffinn_types::IndexableSimilarity;
 use crate::metricdata::MetricData;
@@ -10,10 +12,17 @@ pub struct PuffinnIndex {
 }
 
 impl PuffinnIndex {
-    pub fn new<M: MetricData + IndexableSimilarity<M>>(metric_data: &M, memory_limit: usize) -> Result<Self, String> {
+    pub fn new<M: MetricData + IndexableSimilarity<M>>(
+        metric_data: &M,
+        memory_limit: usize,
+    ) -> Result<Self, String> {
         let dataset_type = metric_data.similarity_type();
-        let dataset_type_cstr = CString::new(dataset_type)
-            .map_err(|_| format!("Failed to convert dataset type '{}' to CString", dataset_type))?;
+        let dataset_type_cstr = CString::new(dataset_type).map_err(|_| {
+            format!(
+                "Failed to convert dataset type '{}' to CString",
+                dataset_type
+            )
+        })?;
 
         let raw = unsafe {
             CPUFFINN_index_create(
@@ -48,6 +57,22 @@ impl PuffinnIndex {
         Ok(index)
     }
 
+    pub fn new_from_file(file_path: &str, dataset_name: &str) -> Result<Self, String> {
+        let file_path_cstr = CString::new(file_path)
+            .map_err(|_| format!("Failed to convert dataset type '{}' to CString", file_path))?;
+        let dataset_name_cstr = CString::new(dataset_name).map_err(|_| {
+            format!(
+                "Failed to convert dataset type '{}' to CString",
+                dataset_name
+            )
+        })?;
+
+        let raw =
+            unsafe { CPUFFINN_load_from_file(file_path_cstr.as_ptr(), dataset_name_cstr.as_ptr()) };
+
+        Ok(Self { raw })
+    }
+
     pub fn search<M: MetricData + IndexableSimilarity<M>>(
         &self,
         query: &[M::DataType],
@@ -55,12 +80,10 @@ impl PuffinnIndex {
         max_dist: f32,
         recall: f32,
     ) -> Result<Vec<u32>, String> {
-
         // convert distance into similarity
-        let max_sim = 1.0 - max_dist/2.0;
+        let max_sim = 1.0 - max_dist / 2.0;
 
         unsafe {
-            
             let results_ptr = M::search_data(
                 self.raw,
                 query.as_ptr(),
@@ -78,15 +101,23 @@ impl PuffinnIndex {
             let results = results_slice.to_vec();
 
             Ok(results)
-            
         }
+    }
+
+    pub fn save_to_file(&self, file_path: &str, index_id: usize) -> Result<(), String> {
+        let file_path_cstring = CString::new(file_path)
+            .map_err(|_| format!("Failed to convert file name '{}' to CString", file_path))?;
+
+        unsafe {
+            CPUFFINN_save_index(self.raw, file_path_cstring.as_ptr(), index_id as i32);
+        }
+
+        Ok(())
     }
 }
 
 pub fn get_distance_computations() -> u32 {
-    unsafe{
-        CPUFFINN_get_distance_computations()
-    }
+    unsafe { CPUFFINN_get_distance_computations() }
 }
 
 pub fn clear_distance_computations() {
@@ -94,4 +125,3 @@ pub fn clear_distance_computations() {
         CPUFFINN_clear_distance_computations();
     }
 }
-

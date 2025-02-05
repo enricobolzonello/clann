@@ -5,3 +5,5 @@ datasets/*
 
 runs/
 clann_results.sqlite3
+
+__index_cache__/

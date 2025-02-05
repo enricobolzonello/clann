@@ -6,7 +6,7 @@ fn main() {
         .args(&["rev-parse", "HEAD"])
         .output()
         .expect("Failed to execute git command");
-    
+
     if output.status.success() {
         let git_hash = String::from_utf8(output.stdout).unwrap_or_default();
         println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_hash.trim());
@@ -16,6 +16,10 @@ fn main() {
     }
 
     // Define paths and flags
+    let hdf5 = pkg_config::Config::new()
+        .atleast_version("1.10")
+        .probe("hdf5")
+        .expect("Failed to find HDF5");
     let puffinn_include_dir = Path::new("puffinn/include");
     let c_api_dir = Path::new("c_api");
     let header_file = c_api_dir.join("c_binder.h");
@@ -33,10 +37,12 @@ fn main() {
         .flag("-Wall")
         .flag("-Wextra")
         .flag("-O3")
-        .flag("-fopenmp");
+        .flag("-fopenmp")
+        .flag("-lhdf5_cpp");
+    for path in &hdf5.include_paths {
+        build.include(path);
+    }
 
-    build.debug(true);
-    
     // Attempt to compile
     println!("cargo:rerun-if-changed=c_api/c_binder.cpp");
     println!("cargo:rerun-if-changed=c_api/c_binder.h");
@@ -55,7 +61,9 @@ fn main() {
         .clang_arg("-x")
         .clang_arg("c++")
         .clang_arg("-std=c++14")
-        // Trust the C declarations as is
+        .clang_args(
+            &hdf5.include_paths.iter().map(|path| format!("-I{}", path.display())).collect::<Vec<_>>()
+        )
         .trust_clang_mangling(true)
         .generate_comments(true)
         .generate()
