@@ -56,9 +56,9 @@ namespace similarity_measure {
 
         auto desc = dataset.get_description();
         desc.args = 16;
-        float res16 = L2Distance::compute_similarity(v1.get(), v2.get(), desc);
+        float res16 = L2Similarity::compute_similarity(v1.get(), v2.get(), desc);
         desc.args = 32;
-        float res32 = L2Distance::compute_similarity(v1.get(), v2.get(), desc);
+        float res32 = L2Similarity::compute_similarity(v1.get(), v2.get(), desc);
         REQUIRE(std::abs(res16-(1.0/1.09)) <= 1e-6);
         REQUIRE(std::abs(res32-(1.0/4.70)) <= 1e-6);
     }

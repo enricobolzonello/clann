@@ -82,7 +82,7 @@ namespace puffinn {
             out.write(reinterpret_cast<const char*>(&perm[0]), len*sizeof(uint32_t));
         }
 
-        LshDatatype operator()(LshDatatype v) const {
+        uint64_t operator()(uint32_t v) const {
             if (num_bits != 0) {
                 auto mask = (1 << num_bits)-1;
                 auto lower = v & mask;
@@ -113,7 +113,7 @@ namespace puffinn {
             permutation.serialize(out);
         }
 
-        LshDatatype operator()(const std::vector<uint32_t>* const vec) const {
+        uint64_t operator()(const std::vector<uint32_t>* const vec) const {
             uint64_t min_hash = 0xFFFFFFFFFFFFFFFF; // 2^64-1
             uint32_t min_token = 0;
             for (uint32_t i : *vec) {
@@ -238,8 +238,8 @@ namespace puffinn {
             hash.serialize(out);
         }
 
-        LshDatatype operator()(const std::vector<uint32_t>* const vec) const {
-            return hash(vec)%2;
+        uint64_t operator()(const std::vector<uint32_t>* const vec) const {
+            return hash(vec)% uint64_t(2);
         }
     };
 

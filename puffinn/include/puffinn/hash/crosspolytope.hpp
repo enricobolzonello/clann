@@ -128,7 +128,7 @@ namespace puffinn {
 
         // Calculate a unique value depending on which axis is closest to the given floating point
         // vector.
-        LshDatatype encode_closest_axis(float* vec) const {
+        uint64_t encode_closest_axis(float* vec) const {
             int res = 0;
             float max_sim = 0;
             for (int i = 0; i < (1 << log_dimensions); i++) {
@@ -184,7 +184,7 @@ namespace puffinn {
         }
 
         // Hash the given vector
-        LshDatatype operator()(const int16_t* const vec) const {
+        uint64_t operator()(const int16_t* const vec) const {
             float rotated_vec[1 << log_dimensions];
 
             // Reset rotation vec
@@ -353,8 +353,8 @@ namespace puffinn {
             out.write(reinterpret_cast<const char*>(random_matrix.get()), matrix_len*sizeof(int16_t));
         }
 
-        LshDatatype operator()(const int16_t* const vec) const {
-            LshDatatype res = 0;
+        uint64_t operator()(const int16_t* const vec) const {
+            uint64_t res = 0;
             uint16_t max_abs_dot = 0;
             for (unsigned int i=0; i<(1u << ceil_log(dimensions)); i++) {
                 auto matrix_row = &random_matrix.get()[i*padded_dimensions];

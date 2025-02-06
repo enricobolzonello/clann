@@ -51,6 +51,21 @@ namespace puffinn {
         #endif
     }
 
+    
+    static float dot_product_simple(const float* lhs, const float* rhs, unsigned int dimensions){
+        float res = 0.0f;
+        for (unsigned int i = 0; i < dimensions; i++)
+        {
+            res += lhs[i] * rhs[i];
+        }
+        return res;
+    }
+    
+    static float dot_product(const float* lhs, const float* rhs, unsigned int dimensions){
+        return dot_product_simple(lhs, rhs, dimensions);
+    }
+
+
     #ifdef __AVX__
         // Compute the l2 distance between two floating point vectors without taking the
         // final root.
@@ -100,6 +115,7 @@ namespace puffinn {
             return l2_distance_float_simple(lhs, rhs, dimensions);
         #endif
     }
+
 
     // Round up to nearest power of two.
     constexpr static unsigned int ceil_log(unsigned int value) {

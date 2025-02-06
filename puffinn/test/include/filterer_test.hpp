@@ -14,7 +14,7 @@ namespace filterer_test {
         dataset.insert(std::vector<float>({1, 0}));
         dataset.insert(std::vector<float>({-1, 0}));
 
-        IndependentHashArgs<SimHash> hash_args;
+        IndependentHashArgs<SimHash, SketchDataType> hash_args;//FIX ME, I'm not quite sure what is better to test for as I currently made Filter always construct on the sketches anyway (i.e. LshDataType makes little sense to me)
         Filterer<SimHash> filterer(hash_args, dataset.get_description());
 
         filterer.add_sketches(dataset, 0);
@@ -40,7 +40,7 @@ namespace filterer_test {
             REQUIRE(sketches.passes_filter(filterer.get_sketch(1, i), i));
         }
     }
-
+    
     TEST_CASE("All filtering bits used") {
         const int NUM_VECTORS = 20;
         const unsigned int DIMENSIONS = 100;
@@ -50,11 +50,11 @@ namespace filterer_test {
             dataset.insert(UnitVectorFormat::generate_random(DIMENSIONS));
         }
 
-        IndependentHashArgs<SimHash> hash_args;
+        IndependentHashArgs<SimHash, SketchDataType> hash_args;
         Filterer<SimHash> filterer(hash_args, dataset.get_description());
         filterer.add_sketches(dataset, 0);
 
-        int bit_counts[NUM_FILTER_HASHBITS];
+        std::vector<int> bit_counts(NUM_FILTER_HASHBITS, 0);
         for (int idx=0; idx < NUM_VECTORS; idx++) {
             for (unsigned int sketch=0; sketch < NUM_SKETCHES; sketch++) {
                 for (unsigned int bit=0; bit < NUM_FILTER_HASHBITS; bit++) {
@@ -62,7 +62,7 @@ namespace filterer_test {
                         bit_counts[bit]++;
                     }
                 }
-            }
+            }       
         }
         for (unsigned int bit=0; bit < NUM_FILTER_HASHBITS; bit++) {
             REQUIRE(bit_counts[bit] != 0);

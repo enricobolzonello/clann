@@ -6,17 +6,17 @@
 #include "puffinn/hash_source/tensor.hpp"
 
 namespace puffinn {
-    template <typename T>
-    static std::unique_ptr<HashSourceArgs<T>> deserialize_hash_args(std::istream& in) {
+    template <typename T, typename hashType>
+    static std::unique_ptr<HashSourceArgs<T, hashType>> deserialize_hash_args(std::istream& in) {
         HashSourceType type;
         in.read(reinterpret_cast<char*>(&type), sizeof(HashSourceType));
         switch (type) {
             case HashSourceType::Independent:
-                return std::make_unique<IndependentHashArgs<T>>(in);
+                return std::make_unique<IndependentHashArgs<T, hashType>>(in);
             case HashSourceType::Pool:
-                return std::make_unique<HashPoolArgs<T>>(in);
+                return std::make_unique<HashPoolArgs<T, hashType>>(in);
             case HashSourceType::Tensor:
-                return std::make_unique<TensoredHashArgs<T>>(in);
+                return std::make_unique<TensoredHashArgs<T, hashType>>(in);
             default:
                 throw std::invalid_argument("hash source type");
         }

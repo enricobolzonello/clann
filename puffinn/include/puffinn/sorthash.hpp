@@ -193,5 +193,24 @@ void sort_hashes_pairs_24(
     do_pass(hashes_in, hashes_out, idx_in, idx_out, b2, _2);
 }
 
+template<typename T, typename U>
+void sort_two_lists(std::vector<T>& v1, std::vector<U>& v2) {
+    
+    std::vector<std::pair<T, U>> combined;
+    for (size_t i = 0; i < v1.size(); ++i) {
+        combined.push_back({v1[i], v2[i]});
+    }
+
+    std::sort(combined.begin(), combined.end(), 
+              [](const std::pair<T, U>& a, const std::pair<T, U>& b) {
+                  return a.first < b.first;
+              });
+
+    for (size_t i = 0; i < combined.size(); ++i) {
+        v1[i] = combined[i].first;
+        v2[i] = combined[i].second;
+    }
+}
+
 
 } // namespace puffinn

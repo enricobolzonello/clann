@@ -19,28 +19,29 @@ namespace puffinn {
     // Sketches for a single query.
     struct QuerySketches {
         // Sketches for the current query.
-        std::vector<FilterLshDatatype> query_sketches;
+        std::vector<SketchDataType> query_sketches;
         // Max hamming distance between sketches to be considered in the current query.
         uint_fast8_t max_sketch_diff;
 
         // Check if the value at position idx in the dataset passes the next filter.
         // A value can only pass one filter.
-        bool passes_filter(FilterLshDatatype sketch, int_fast32_t sketch_idx) const {
+        bool passes_filter(SketchDataType sketch, int_fast32_t sketch_idx) const {
             uint_fast8_t sketch_diff = popcountll(sketch ^ query_sketches[sketch_idx]);
             return (sketch_diff <= max_sketch_diff);
         }
     };
+    
 
     template <typename T>
     class Filterer {
-        std::unique_ptr<HashSource<T>> hash_source;
+        std::unique_ptr<HashSource<T, SketchDataType>> hash_source;
 
         // Filters are stored with sketches for the same value adjacent.
-        std::vector<FilterLshDatatype> sketches;
-        std::unique_ptr<HashSourceArgs<T>> sketch_args;
+        std::vector<SketchDataType> sketches;
+        std::unique_ptr<HashSourceArgs<T, SketchDataType>> sketch_args;
 
     public:
-        Filterer(const HashSourceArgs<T>& args, DatasetDescription<typename T::Sim::Format> dataset)
+        Filterer(const HashSourceArgs<T, SketchDataType>& args, DatasetDescription<typename T::Sim::Format> dataset)
           : hash_source(
                 args.build(
                     dataset,
@@ -51,12 +52,12 @@ namespace puffinn {
         }
 
         Filterer(std::istream& in) {
-            sketch_args = deserialize_hash_args<T>(in);
+            sketch_args = deserialize_hash_args<T, SketchDataType>(in);
             hash_source = sketch_args->deserialize_source(in);
             size_t len;
             in.read(reinterpret_cast<char*>(&len), sizeof(size_t));
             sketches.resize(len);
-            in.read(reinterpret_cast<char*>(sketches.data()), len*sizeof(FilterLshDatatype));
+            in.read(reinterpret_cast<char*>(sketches.data()), len*sizeof(SketchDataType));
         }
 
         void serialize(std::ostream& out) const {
@@ -64,12 +65,12 @@ namespace puffinn {
             hash_source->serialize(out);
             size_t len = sketches.size();
             out.write(reinterpret_cast<char*>(&len), sizeof(size_t));
-            out.write(reinterpret_cast<const char*>(sketches.data()), len*sizeof(FilterLshDatatype));
+            out.write(reinterpret_cast<const char*>(sketches.data()), len*sizeof(SketchDataType));
         }
 
         uint64_t memory_usage(DatasetDescription<typename T::Sim::Format> dataset) {
             return sketch_args->memory_usage(dataset, NUM_SKETCHES, NUM_FILTER_HASHBITS)
-                + sketches.size()*sizeof(FilterLshDatatype)
+                + sketches.size()*sizeof(SketchDataType)
                 + NUM_SKETCHES*sketch_args->function_memory_usage(dataset, NUM_FILTER_HASHBITS);
         }
 
@@ -78,8 +79,10 @@ namespace puffinn {
             uint32_t first_index
         ) {
             sketches.resize(dataset.get_size()*NUM_SKETCHES);
-
-            std::vector<std::vector<uint64_t>> tl_sketch_values;
+            
+            
+            std::vector<std::vector<SketchDataType>> tl_sketch_values;
+            
             tl_sketch_values.resize(omp_get_max_threads());
             for (size_t i=0; i < tl_sketch_values.size(); i++) {
                 tl_sketch_values[i].resize(NUM_SKETCHES);
@@ -110,7 +113,7 @@ namespace puffinn {
             return std::roundf(NUM_FILTER_HASHBITS*(1.0-collision_prob));
         }
 
-        FilterLshDatatype get_sketch(uint32_t idx, int_fast32_t sketch_idx) const {
+        SketchDataType get_sketch(uint32_t idx, int_fast32_t sketch_idx) const {
             return sketches[(idx << LOG_NUM_SKETCHES) | sketch_idx];
         }
     };

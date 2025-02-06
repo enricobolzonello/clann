@@ -64,7 +64,7 @@ public:
     ) = 0;
 };
 
-template <typename T, typename U = SimHash>
+template <typename T, typename hashType, typename U = SimHash>
 class AngularIndex : public RealIndex {
     Index<CosineSimilarity, T, U> table;
 
@@ -73,7 +73,7 @@ public:
     {
     }
 
-    AngularIndex(unsigned int dimensions, uint64_t memory_limit, const HashSourceArgs<T>& hash_args)
+    AngularIndex(unsigned int dimensions, uint64_t memory_limit, const HashSourceArgs<T, hashType>& hash_args)
       : table(dimensions, memory_limit, hash_args)
     {
     }
@@ -145,6 +145,83 @@ public:
     }
 };
 
+template <typename T, typename hashType, typename U = L2Hash>
+class EuclideanIndex : public RealIndex {
+    Index<L2Similarity, T, U> table;
+
+public:
+    EuclideanIndex(std::istream& stream) : table(stream)
+    {
+    }
+
+    EuclideanIndex(unsigned int dimensions, uint64_t memory_limit, const HashSourceArgs<T, hashType>& hash_args)
+      : table(dimensions, memory_limit, hash_args)
+    {
+    }
+
+    void insert(const std::vector<float>& vec) {
+        table.insert(vec);
+    }
+
+    std::vector<float> get(uint32_t idx) {
+        return table.template get<std::vector<float>>(idx);
+    }
+
+    void rebuild() {
+        table.rebuild();
+    }
+
+    std::vector<uint32_t> search(
+        const std::vector<float>& vec,
+        unsigned int k,
+        float recall,
+        FilterType filter_type
+    ) {
+        return table.search(vec, k, recall, filter_type);
+    }
+
+    std::vector<std::pair<uint32_t, uint32_t>> closest_pairs(
+        unsigned int k,
+        float recall,
+        FilterType filter_type
+    ) {
+        return table.closest_pairs(k, recall, filter_type);
+    }
+
+    std::vector<uint32_t> search_from_index(
+        uint32_t idx,
+        unsigned int k,
+        float recall,
+        FilterType filter_type
+    ) {
+        return table.search_from_index(idx, k, recall, filter_type);
+    }
+
+    void serialize(std::ostream& out) {
+        table.serialize(out, true);
+    }
+
+    std::string metric() {
+        return "euclidean";
+    }
+
+    std::string hash_function() {
+        if (std::is_same<T, L2Hash>::value) {
+            return "L2hash";
+        }
+        return "";
+    }
+
+    PySerializeIter serialize_chunks() {
+        return PySerializeIter(table.serialize_chunks());
+    }
+
+    void append_chunk(std::string s) {
+        std::stringstream stream(s);
+        table.deserialize_chunk(stream);
+    }
+};
+
 class AbstractSetIndex : public AbstractIndex {
 public:
     virtual void insert(const std::vector<uint32_t>& vec) = 0;
@@ -157,7 +234,7 @@ public:
     ) = 0;
 };
 
-template <typename T, typename U = MinHash1Bit>
+template <typename T,typename hashType, typename U = MinHash1Bit>
 class SetIndex : public AbstractSetIndex {
     Index<JaccardSimilarity, T, U> table;
 
@@ -169,7 +246,7 @@ public:
     SetIndex(
         unsigned int dimensions,
         uint64_t memory_limit,
-        const HashSourceArgs<T>& hash_args
+        const HashSourceArgs<T, hashType>& hash_args
     ) 
       : table(dimensions, memory_limit, hash_args) 
     {
@@ -257,6 +334,8 @@ public:
             init_angular(dimensions, memory_limit, kwargs);
         } else if (metric == "jaccard") {
             init_jaccard(dimensions, memory_limit, kwargs);
+        } else if (metric == "euclidean"){
+            init_euclidean(dimensions, memory_limit, kwargs);
         } else {
             throw std::invalid_argument("metric");
         }
@@ -266,19 +345,25 @@ public:
         std::stringstream stream(data, std::ios_base::in | std::ios_base::binary);
         if (metric == "angular") {
             if (hash_function == "simhash") {
-                real_table = std::make_unique<AngularIndex<SimHash>>(stream);
+                real_table = std::make_unique<AngularIndex<SimHash, LshDatatype>>(stream);
             } else if (hash_function == "crosspolytope") {
-                real_table = std::make_unique<AngularIndex<CrossPolytopeHash>>(stream);
+                real_table = std::make_unique<AngularIndex<CrossPolytopeHash, LshDatatype>>(stream);
             } else if (hash_function == "fht_crosspolytope") {
-                real_table = std::make_unique<AngularIndex<FHTCrossPolytopeHash>>(stream);
+                real_table = std::make_unique<AngularIndex<FHTCrossPolytopeHash, LshDatatype>>(stream);
             } else {
                 throw std::invalid_argument("hash_function");
             }
         } else if (metric == "jaccard") {
             if (hash_function == "minhash") {
-                set_table = std::make_unique<SetIndex<MinHash>>(stream);
+                set_table = std::make_unique<SetIndex<MinHash, LshDatatype>>(stream);
             } else if (hash_function == "1bit_minhash") {
-                set_table = std::make_unique<SetIndex<MinHash1Bit>>(stream);
+                set_table = std::make_unique<SetIndex<MinHash1Bit, LshDatatype>>(stream);
+            } else {
+                throw std::invalid_argument("hash_function");
+            }
+        } else if (metric == "euclidean"){
+            if (hash_function == "euclidean"){
+                real_table = std::make_unique<EuclideanIndex<L2Hash, LshDatatype>>(stream);
             } else {
                 throw std::invalid_argument("hash_function");
             }
@@ -437,6 +522,10 @@ private:
     void set_hash_args(SimHash::Args&, const py::dict&) {
     }
 
+    // No args
+    void set_hash_args(L2Hash::Args&, const py::dict&){
+    }
+
     void set_hash_args(CrossPolytopeHash::Args& args, const py::dict& params) {
         set(args.estimation_repetitions, params, "estimation_repetitions");
         set(args.estimation_eps, params, "estimation_eps");
@@ -452,8 +541,9 @@ private:
         set(args.randomized_bits, params, "randomized_bits");
     }
 
-    template <typename T>
-    std::unique_ptr<HashSourceArgs<T>> get_hash_source_args(const py::kwargs& kwargs) {
+
+    template <typename T, typename hashType>
+    std::unique_ptr<HashSourceArgs<T, hashType>> get_hash_source_args(const py::kwargs& kwargs) {
         std::string source = "independent";
         if (kwargs.contains("hash_source")) {
             source = py::cast<std::string>(kwargs["hash_source"]);
@@ -464,19 +554,19 @@ private:
             if (kwargs.contains("source_args") && kwargs["source_args"].contains("pool_size")) {
                 pool_size = py::cast<unsigned int>(kwargs["source_args"]["pool_size"]);
             }
-            auto res = std::make_unique<HashPoolArgs<T>>(pool_size);
+            auto res = std::make_unique<HashPoolArgs<T, hashType>>(pool_size);
             if (kwargs.contains("hash_args")) {
                 set_hash_args(res->args, kwargs["hash_args"]);
             }
             return res;
         } else if (source == "independent") {
-            auto res = std::make_unique<IndependentHashArgs<T>>();
+            auto res = std::make_unique<IndependentHashArgs<T, hashType>>();
             if (kwargs.contains("hash_args")) {
                 set_hash_args(res->args, kwargs["hash_args"]);
             }
             return res; 
         } else if (source == "tensor") {
-            auto res = std::make_unique<TensoredHashArgs<T>>();
+            auto res = std::make_unique<TensoredHashArgs<T, hashType>>();
             if (kwargs.contains("hash_args")) {
                 set_hash_args(res->args, kwargs["hash_args"]);
             }
@@ -492,20 +582,20 @@ private:
             hash_function = py::cast<std::string>(kwargs["hash_function"]);
         }
         if (hash_function == "simhash") {
-            real_table = std::make_unique<AngularIndex<SimHash>>(
+            real_table = std::make_unique<AngularIndex<SimHash, LshDatatype>>(
                 dimensions,
                 memory_limit,
-                *get_hash_source_args<SimHash>(kwargs));
+                *get_hash_source_args<SimHash, LshDatatype>(kwargs));
         } else if (hash_function == "crosspolytope") {
-            real_table = std::make_unique<AngularIndex<CrossPolytopeHash>>(
+            real_table = std::make_unique<AngularIndex<CrossPolytopeHash, LshDatatype>>(
                 dimensions,
                 memory_limit,
-                *get_hash_source_args<CrossPolytopeHash>(kwargs));
+                *get_hash_source_args<CrossPolytopeHash, LshDatatype>(kwargs));
         } else if (hash_function == "fht_crosspolytope") {
-            real_table = std::make_unique<AngularIndex<FHTCrossPolytopeHash>>(        
+            real_table = std::make_unique<AngularIndex<FHTCrossPolytopeHash, LshDatatype>>(        
                 dimensions,
                 memory_limit,
-                *get_hash_source_args<FHTCrossPolytopeHash>(kwargs));
+                *get_hash_source_args<FHTCrossPolytopeHash, LshDatatype>(kwargs));
         } else {
             throw std::invalid_argument("hash_function");
         }
@@ -517,15 +607,30 @@ private:
             hash_function = py::cast<std::string>(kwargs["hash_function"]);
         }
         if (hash_function == "minhash") {
-            set_table = std::make_unique<SetIndex<MinHash>>(
+            set_table = std::make_unique<SetIndex<MinHash, LshDatatype>>(
                 dimensions,
                 memory_limit,
-                *get_hash_source_args<MinHash>(kwargs));
+                *get_hash_source_args<MinHash, LshDatatype>(kwargs));
         } else if (hash_function == "1bit_minhash") {
-            set_table = std::make_unique<SetIndex<MinHash1Bit>>(
+            set_table = std::make_unique<SetIndex<MinHash1Bit, LshDatatype>>(
                 dimensions,
                 memory_limit,
-                *get_hash_source_args<MinHash1Bit>(kwargs));
+                *get_hash_source_args<MinHash1Bit, LshDatatype>(kwargs));
+        } else {
+            throw std::invalid_argument("hash_function");
+        }
+    }
+
+    void init_euclidean(unsigned int dimensions, uint64_t memory_limit, const py::kwargs& kwargs){
+        std::string hash_function = "L2hash";
+        if (kwargs.contains("hash_function")) {
+            hash_function = py::cast<std::string>(kwargs["hash_function"]);
+        }
+        if(hash_function == "L2hash"){
+            real_table = std::make_unique<EuclideanIndex<L2Hash, LshDatatype>>(
+                dimensions,
+                memory_limit,
+                *get_hash_source_args<L2Hash, LshDatatype>(kwargs));
         } else {
             throw std::invalid_argument("hash_function");
         }

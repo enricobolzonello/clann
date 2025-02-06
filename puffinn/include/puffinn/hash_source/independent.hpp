@@ -5,8 +5,8 @@
 
 namespace puffinn {
     // A source of completely independent hash functions.
-    template <typename T>
-    class IndependentHashSource : public HashSource<T> {
+    template <typename T, typename hashType>
+    class IndependentHashSource : public HashSource<T, hashType> {
         T hash_family;
         std::vector<typename T::Function> hash_functions;
         unsigned int num_hashers;
@@ -66,22 +66,22 @@ namespace puffinn {
             out.write(reinterpret_cast<const char*>(&next_function), sizeof(unsigned int));
             out.write(reinterpret_cast<const char*>(&bits_to_cut), sizeof(unsigned int));
         }
+        
 
         void hash_repetitions(
             const typename T::Sim::Format::Type * const input,
-            std::vector<uint64_t> & output
+            std::vector<hashType> & output 
         ) const {
             output.resize(num_hashers);
             // Iterate through all the functions, accumulating bits
             for (size_t rep = 0; rep < num_hashers; rep++) {
                 size_t offset = rep * functions_per_hasher;
-                uint64_t res = 0;
+                hashType res;
                 for (unsigned int i=0; i < functions_per_hasher; i++) {
-                    res <<= bits_per_function;
-                    res |= hash_functions[offset+i](input);
+                    res.concatenate_hash(hash_functions[offset+i](input), bits_per_function);
                 }
                 res >>= bits_to_cut;
-                output[rep] = res;
+                output[rep] = res;                
             }
         }
 
@@ -120,8 +120,8 @@ namespace puffinn {
     };
 
     /// Describes a hash source where all hash functions are sampled independently.
-    template <typename T>
-    struct IndependentHashArgs : public HashSourceArgs<T> {
+    template <typename T, typename hashType>
+    struct IndependentHashArgs : public HashSourceArgs<T, hashType> {
         /// Arguments for the hash family.
         typename T::Args args;
 
@@ -138,12 +138,12 @@ namespace puffinn {
             args.serialize(out);
         }
 
-        std::unique_ptr<HashSource<T>> build(
+        std::unique_ptr<HashSource<T, hashType>> build(
             DatasetDescription<typename T::Sim::Format> desc,
             unsigned int num_tables,
             unsigned int num_bits
         ) const {
-            return std::make_unique<IndependentHashSource<T>> (
+            return std::make_unique<IndependentHashSource<T, hashType>> (
                 desc,
                 args,
                 num_tables,
@@ -151,8 +151,8 @@ namespace puffinn {
             );
         }
 
-        std::unique_ptr<HashSourceArgs<T>> copy() const {
-            return std::make_unique<IndependentHashArgs<T>>(*this);
+        std::unique_ptr<HashSourceArgs<T, hashType>> copy() const {
+            return std::make_unique<IndependentHashArgs<T, hashType>>(*this);
         }
 
         uint64_t memory_usage(
@@ -166,7 +166,7 @@ namespace puffinn {
             args_copy.set_no_preprocessing();
             auto bits = T(dataset, args_copy).bits_per_function();
             auto funcs_per_hash = (num_bits+bits-1)/bits;
-            return sizeof(IndependentHashSource<T>)
+            return sizeof(IndependentHashSource<T, hashType>)
                 + funcs_per_hash*num_tables*args.memory_usage(dataset);
         }
 
@@ -177,8 +177,8 @@ namespace puffinn {
             return 0; // We no longer use hash functions sampled from pools
         }
 
-        std::unique_ptr<HashSource<T>> deserialize_source(std::istream& in) const {
-            return std::make_unique<IndependentHashSource<T>>(in);
+        std::unique_ptr<HashSource<T, hashType>> deserialize_source(std::istream& in) const {
+            return std::make_unique<IndependentHashSource<T, hashType>>(in);
         }
     };
 }
