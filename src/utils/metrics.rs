@@ -28,7 +28,7 @@ pub struct RunMetrics {
     dataset_len: usize,
     greedy_clusters: usize,
     memory_used_bytes: usize,
-    total_search_time_s: f32,
+    total_search_time_s: Duration,
     queries_per_second: f32,
     recall_mean: f32,
     recall_std: f32,
@@ -53,7 +53,7 @@ impl RunMetrics {
             cluster_sizes: Vec::new(),
             config,
             memory_used_bytes: 0,
-            total_search_time_s: 0.0,
+            total_search_time_s: Duration::default(),
             queries_per_second: 0.0,
             recall_mean: 0.0,
             recall_std: 0.0,
@@ -127,10 +127,10 @@ impl RunMetrics {
         self.memory_used_bytes = dataset_len * self.config.kb_per_point * 1024;
 
         // Search time
-        self.total_search_time_s = total_search_time.as_secs_f32();
+        self.total_search_time_s = *total_search_time;
 
         // QPS
-        self.queries_per_second = (run_distances.len() as f32) / self.total_search_time_s;
+        self.queries_per_second = (run_distances.len() as f32) / (self.total_search_time_s.as_nanos() as f32 / 1_000_000_000.0);
     }
 
     fn compute_recall(
@@ -224,7 +224,7 @@ impl RunMetrics {
                 option_env!("GIT_COMMIT_HASH").unwrap_or("NO_COMMIT"),
                 self.dataset_len,
                 self.memory_used_bytes,
-                self.total_search_time_s,
+                self.total_search_time_s.as_secs_f32(),
                 self.queries_per_second,
                 self.recall_mean,
                 self.recall_std,
@@ -250,12 +250,11 @@ impl RunMetrics {
 
     fn sqlite_insert_queries_only(&self, conn: &Connection) -> Result<(), rusqlite::Error> {
 
-        let current_time = chrono::Utc::now().to_rfc3339();
         let git_hash = option_env!("GIT_COMMIT_HASH").unwrap_or("NO_COMMIT");
 
         // Insert only query-level metrics
         for (query_idx, query) in self.queries.iter().enumerate() {
-            self.sqlite_insert_query_metrics(conn, query_idx, query, &current_time, &git_hash)?;
+            self.sqlite_insert_query_metrics(conn, query_idx, query, &git_hash)?;
         }
 
         Ok(())
@@ -263,12 +262,11 @@ impl RunMetrics {
 
     fn sqlite_insert_clann_results_query(&self, conn: &Connection) -> Result<(), rusqlite::Error> {
 
-        let current_time = chrono::Utc::now().to_rfc3339();
         let git_hash = option_env!("GIT_COMMIT_HASH").unwrap_or("NO_COMMIT");
 
         // Insert query-level metrics
         for (query_idx, query) in self.queries.iter().enumerate() {
-            self.sqlite_insert_query_metrics(conn, query_idx, query, &current_time, &git_hash)?;
+            self.sqlite_insert_query_metrics(conn, query_idx, query, &git_hash)?;
             
             // Insert cluster-level metrics for each query
             for (cluster_idx, ((n_candidates, timing), distance_comp)) in query
@@ -285,7 +283,6 @@ impl RunMetrics {
                     *n_candidates,
                     timing,
                     *distance_comp,
-                    &current_time,
                     &git_hash,
                 )?;
             }
@@ -299,7 +296,6 @@ impl RunMetrics {
         conn: &Connection,
         query_idx: usize,
         query: &QueryMetrics,
-        current_time: &str,
         git_hash: &str,
     ) -> Result<(), rusqlite::Error> {
         conn.execute(
@@ -313,7 +309,6 @@ impl RunMetrics {
                 query_idx,
                 query_time_ms,
                 distance_computations,
-                created_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 self.config.num_clusters_factor,
@@ -323,9 +318,8 @@ impl RunMetrics {
                 self.config.dataset_name,
                 git_hash,
                 query_idx as i64,
-                query.query_time.as_micros() as i64,
+                query.query_time.as_nanos() as i64,
                 query.distance_computations as i64,
-                current_time,
             ],
         )?;
 
@@ -340,7 +334,6 @@ impl RunMetrics {
         n_candidates: usize,
         timing: &Duration,
         distance_comp: usize,
-        current_time: &str,
         git_hash: &str,
     ) -> Result<(), rusqlite::Error> {
         let cluster_size = self
@@ -362,7 +355,6 @@ impl RunMetrics {
                 cluster_time_ms,
                 cluster_size,
                 cluster_distance_computations,
-                created_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 self.config.num_clusters_factor,
@@ -374,10 +366,9 @@ impl RunMetrics {
                 query_idx as i64,
                 cluster_idx as i64,
                 n_candidates as i64,
-                timing.as_micros() as i64,
+                timing.as_nanos() as i64,
                 *cluster_size as i64,
                 distance_comp as i64,
-                current_time,
             ],
         )?;
 

@@ -6,4 +6,5 @@ datasets/*
 runs/
 clann_results.sqlite3
 
-__index_cache__/
+__index_cache__/*
+!__index_cache__/.gitkeep

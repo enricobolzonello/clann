@@ -285,7 +285,7 @@ where
 
         let mut priority_queue = TopKClosestHeap::new(self.config.k);
 
-        let mut max_dist = 0.0;
+        let mut max_dist = f32::INFINITY;
 
         for cluster_idx in sorted_cluster {
             debug!("cluster index: {}", cluster_idx);
