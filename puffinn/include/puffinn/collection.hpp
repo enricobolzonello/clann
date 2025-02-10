@@ -91,7 +91,7 @@ namespace puffinn {
         Dataset<typename TSim::Format> dataset;
         // Hash tables used by LSH.
         std::vector<PrefixMap<THash>> lsh_maps;
-        std::unique_ptr<HashSource<THash, LshDatatype>> hash_source;
+        std::unique_ptr<HashSource<THash>> hash_source;
         // Container of sketches. Also needs to be reset.
         Filterer<TSketch> filterer;
 
@@ -101,13 +101,13 @@ namespace puffinn {
         uint32_t last_rebuild = 0;
         // Construction of the hash source is delayed until the
         // first rebuild so that we know how many tables are at most used.
-        std::unique_ptr<HashSourceArgs<THash, LshDatatype>> hash_args;
+        std::unique_ptr<HashSourceArgs<THash>> hash_args;
 
         // A buffer to hold the hash values of queries, to be reused across
         // different queries.
         // NOTE: This is not thread safe: i.e. we assume that no queries
         // are evaluated in parallel.
-        std::vector<LshDatatype> query_hashes;
+        std::vector<uint64_t> query_hashes;
         // A buffer to hold the sketch values of queries, to be reused across
         // different queries.
         // NOTE: This is not thread safe: i.e. we assume that no queries
@@ -132,8 +132,8 @@ namespace puffinn {
         Index(
             typename TSim::Format::Args dataset_args,
             uint64_t memory_limit,
-            const HashSourceArgs<THash,     LshDatatype>& hash_args         = IndependentHashArgs<THash,    LshDatatype>(),
-            const HashSourceArgs<TSketch,   SketchDataType>& sketch_args    = IndependentHashArgs<TSketch,  SketchDataType>()
+            const HashSourceArgs<THash>& hash_args = IndependentHashArgs<THash>(),
+            const HashSourceArgs<TSketch>& sketch_args = IndependentHashArgs<TSketch>()
         )
           : dataset(Dataset<typename TSim::Format>(dataset_args)),
             filterer(sketch_args, dataset.get_description()),
@@ -154,7 +154,7 @@ namespace puffinn {
           : dataset(in),
             filterer(in)
         {
-            hash_args = deserialize_hash_args<THash, LshDatatype>(in);
+            hash_args = deserialize_hash_args<THash>(in);
             bool has_hash_source;
             in.read(reinterpret_cast<char*>(&has_hash_source), sizeof(bool));
             if (has_hash_source) {
@@ -297,10 +297,7 @@ namespace puffinn {
 
             // Compute hashes for the new vectors in order, so that caching works.
             // Hash a vector in all the different ways needed.
-
-            std::vector<std::vector<LshDatatype>> tl_hash_values; //ALTERED
-            //std::vector<std::vector<uint64_t>> tl_hash_values;
-
+            std::vector<std::vector<uint64_t>> tl_hash_values;
             tl_hash_values.resize(omp_get_max_threads());
             for (size_t i=0; i < tl_hash_values.size(); i++) {
                 tl_hash_values[i].resize(lsh_maps.size());
@@ -634,7 +631,7 @@ namespace puffinn {
             size_t num_ranges = 0;
             // Empty ranges are discarded.
             // +1 to always allow safe access to the next range
-            std::unique_ptr<Range[]> ranges;
+            std::unique_ptr<std::pair<const uint32_t*, const uint32_t*>[]> ranges;
             // For each range, which table it was taken from.
             std::unique_ptr<uint_fast32_t[]> table_indices;
 
@@ -647,7 +644,7 @@ namespace puffinn {
             SearchBuffers(
                 const std::vector<PrefixMap<THash>>& maps,
                 QuerySketches sketches,
-                std::vector<LshDatatype> & hashes
+                std::vector<uint64_t> & hashes
             )
               : sketches(sketches)
             {
@@ -671,13 +668,11 @@ namespace puffinn {
 
                 num_ranges = 0;
                 for (uint_fast32_t j=0; j<maps.size(); j++) {
-                    std::vector<Range> ranges_local = maps[j].get_next_range(query_objects[j]);
-                    for(Range range : ranges_local){
-                        ranges[num_ranges] = range;
-                        table_indices[num_ranges] = j;
-                        // Skip empty ranges
-                        num_ranges += (range.first != range.second);
-                    }
+                    auto range = maps[j].get_next_range(query_objects[j]);
+                    ranges[num_ranges] = range;
+                    table_indices[num_ranges] = j;
+                    // Skip empty ranges
+                    num_ranges += (range.first != range.second);
                 }
                 // A large range that is never dereferenced, so that it will
                 // never advance further in the array.
@@ -694,7 +689,7 @@ namespace puffinn {
             MaxBuffer& maxbuffer,
             float recall,
             QuerySketches sketches,
-            std::vector<LshDatatype> & query_hashes
+            std::vector<uint64_t> & query_hashes
         ) const {
             SearchBuffers buffers(lsh_maps, sketches, query_hashes);
             for (uint_fast8_t depth=MAX_HASHBITS; depth > 0; depth--) {
@@ -740,7 +735,7 @@ namespace puffinn {
             float recall,
             QuerySketches sketches,
             // TODO make const
-            std::vector<LshDatatype> & query_hashes
+            std::vector<uint64_t> & query_hashes
         ) const {
             SearchBuffers buffers(lsh_maps, sketches, query_hashes);
             for (uint_fast8_t depth=MAX_HASHBITS; depth > 0; depth--) {
@@ -793,7 +788,7 @@ namespace puffinn {
             float max_sim,
             QuerySketches sketches,
             // TODO Make const
-            std::vector<LshDatatype> & query_hashes
+            std::vector<uint64_t> & query_hashes
         ) const {
             const size_t FILTER_BUFFER_SIZE = 128;
 
@@ -827,7 +822,7 @@ namespace puffinn {
                     missing_ring_vals -= (range_idx < buffers.num_ranges);
                     range_idx += (range.first == range.second);
                 }
-                
+
                 while (range_idx < buffers.num_ranges) {
                     uint_fast32_t num_passing_filter = 0;
                     // Can potentially add 4xRING_SIZE values to the buffer
@@ -965,7 +960,7 @@ namespace puffinn {
                     g_performance_metrics.start_timer(Computation::Filtering);
                 }
                 g_performance_metrics.store_time(Computation::Filtering);
-            } 
+            }
         }
 
         void serialize_chunk(std::ostream& out, size_t idx) const {

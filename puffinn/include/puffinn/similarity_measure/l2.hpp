@@ -1,23 +1,24 @@
 #pragma once
 
 #include "puffinn/format/real_vector.hpp"
+#include "puffinn/hash/crosspolytope.hpp"
+#include "puffinn/hash/simhash.hpp"
+#include "puffinn/math.hpp"
+
+#include <cmath>
 
 namespace puffinn {
-    class L2Hash;
-
-    struct L2Similarity {
+    struct L2Distance {
         using Format = RealVectorFormat;
-        using DefaultHash = L2Hash;
-        using DefaultSketch = L2Hash;
+//        using DefaultHash = unimplemented;
+//        using DefaultSketch = unimplemented;
 
         static float compute_similarity(float* lhs, float* rhs, DatasetDescription<Format> desc) {
             auto dist = l2_distance_float(lhs, rhs, desc.args);
             // Convert to a similarity between 0 and 1,
             // which is needed to calculate collision probabilities.
             return 1.0/(dist+1.0);
-            // return dist;
         }
     };
 }
 
-#include "puffinn/hash/L2hash.hpp"

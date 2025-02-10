@@ -3,32 +3,17 @@
 #include <chrono>
 #include <cstdint>
 #include <random>
-#include <cassert>
-#include "puffinn/LshDatatypes/LshDatatype.hpp"
 
 namespace puffinn {
     // Number of bits used in filtering sketches.
-    static const unsigned int NUM_FILTER_HASHBITS = 64;
-    using SketchDataType = HammingType<uint64_t>;
-
+    const static unsigned int NUM_FILTER_HASHBITS = 64;
+    using FilterLshDatatype = uint64_t;
 
     // Number of bits used in hashes.
-    static const unsigned int MAX_HASHBITS = 24;
-    using LshDatatype = HammingType<uint32_t>; 
-    static const unsigned int BITS_PER_FUNCTION = 4;
-    static const LshDatatype IMPOSSIBLE_PREFIX = 0xffffffff;
-
-    // static const LshDatatype IMPOSSIBLE_PREFIX = 0xffffffffffffffff;
-    //segments represent a continuous range of values (used in prefixmap)
-    typedef std::pair<const uint32_t*, const uint32_t*> Range;
-
-
+    const static unsigned int MAX_HASHBITS = 24;
     // The hash_pool concatenates hashes into a type twice as large to avoid overflow errors.
-    
-    //---Working towards having LshDatatypes instead supporting different logical options.  
-    //using LshDatatype = uint32_t;
-    
-    
+    using LshDatatype = uint32_t;
+
     std::default_random_engine generator(std::chrono::system_clock::now().time_since_epoch().count());
 
     // Retrieve the default random engine, seeded once by the system clock.

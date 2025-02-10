@@ -8,8 +8,8 @@ namespace puffinn {
     // These functions can be mixed to produce different hashes, which means that fewer hash
     // computations are needed. However if the pool contains too few hash functions, it will
     // perform worse.
-    template <typename T, typename hashType>
-    class HashPool : public HashSource<T, hashType> {
+    template <typename T>
+    class HashPool : public HashSource<T> {
         T hash_family;
         std::vector<typename T::Function> hash_functions;
         std::vector<std::vector<unsigned int>> indices;
@@ -107,16 +107,17 @@ namespace puffinn {
             out.write(reinterpret_cast<const char*>(&bits_to_cut), sizeof(unsigned int));
         }
 
-
-        //?This was apparently never used anywhere?
-        // hashType concatenate_hash(
-        //     const std::vector<unsigned int>& indices,
-        //     const uint64_t* hashes //hashes are always 64bit unsigned ints
-        // ) const {
-        //     hashType res;
-        //     res.concatenate_hashes(indices, hashes, bits_per_function);  
-        //     return res;
-        // }
+        uint64_t concatenate_hash(
+            const std::vector<unsigned int>& indices,
+            const LshDatatype* hashes
+        ) const {
+            uint64_t res = 0;
+            for (auto idx : indices) {
+                res <<= bits_per_function;
+                res |= hashes[idx];
+            }
+            return res;
+        }
 
         unsigned int get_size() const {
             return hash_functions.size();
@@ -132,14 +133,12 @@ namespace puffinn {
 
         void hash_repetitions(
             const typename T::Sim::Format::Type * const input,
-            std::vector<hashType> & output
+            std::vector<uint64_t> & output
         ) const {
             output.clear();
 
             // TODO: remove this allocation and reuse the scratch space
-            std::vector<uint64_t> pool; //FIX ME, I'm not sure if this should be another type, it hinges on whether we want hashType to just be a concatenation of hashes
-                                        //Where do we put the abstraction, should hashType be able to correctly store the hash without knowledge of the hashfunction
-                                        //Or should it be inside the hashfunction, so that it produces a valid formatted hash?
+            std::vector<uint64_t> pool;
             pool.reserve(hash_functions.size());
 
             for (size_t i = 0; i < hash_functions.size(); i++) {
@@ -148,14 +147,13 @@ namespace puffinn {
 
             for (size_t rep = 0; rep < num_tables; rep++) {
                 // Concatenate the hashes
-                hashType res;
+                uint64_t res = 0;
                 for (auto idx : indices[rep]) {
-                    res.concatenate_hash(pool[idx], bits_per_function);
+                    res <<= bits_per_function;
+                    res |= pool[idx];
                 }
-                res >>= bits_to_cut;
-                output.push_back(res);
+                output.push_back(res >> bits_to_cut);
             }
-
         }
 
         float icollision_probability(float p) const {
@@ -194,8 +192,8 @@ namespace puffinn {
     /// It is typically possible to choose a pool size which 
     /// performs better than independent hashing,
     /// but using independent hashes is a better default.
-    template <typename T, typename hashType>
-    struct HashPoolArgs : public HashSourceArgs<T, hashType> {
+    template <typename T>
+    struct HashPoolArgs : public HashSourceArgs<T> {
         /// Arguments for the hash family.
         typename T::Args args;
         /// The size of the pool in bits.
@@ -220,12 +218,12 @@ namespace puffinn {
             out.write(reinterpret_cast<const char*>(&pool_size), sizeof(unsigned int));
         }
 
-        std::unique_ptr<HashSource<T, hashType>> build(
+        std::unique_ptr<HashSource<T>> build(
             DatasetDescription<typename T::Sim::Format> desc,
             unsigned int num_tables,
             unsigned int num_bits_per_function
         ) const {
-            return std::make_unique<HashPool<T, hashType>> (
+            return std::make_unique<HashPool<T>> (
                 desc,
                 args,
                 pool_size,
@@ -234,8 +232,8 @@ namespace puffinn {
             );
         }
 
-        std::unique_ptr<HashSourceArgs<T, hashType>> copy() const {
-            return std::make_unique<HashPoolArgs<T, hashType>>(*this);
+        std::unique_ptr<HashSourceArgs<T>> copy() const {
+            return std::make_unique<HashPoolArgs<T>>(*this);
         }
 
         uint64_t memory_usage(
@@ -246,7 +244,7 @@ namespace puffinn {
             typename T::Args args_copy(args);
             args_copy.set_no_preprocessing();
             auto bits = T(dataset, args_copy).bits_per_function();
-            return sizeof(HashPool<T, hashType>)
+            return sizeof(HashPool<T>)
                 + pool_size/bits*args.memory_usage(dataset);
         }
 
@@ -260,8 +258,8 @@ namespace puffinn {
             return (num_bits+bits-1)/bits*sizeof(unsigned int);
         }
 
-        std::unique_ptr<HashSource<T, hashType>> deserialize_source(std::istream& in) const {
-            return std::make_unique<HashPool<T, hashType>>(in);
+        std::unique_ptr<HashSource<T>> deserialize_source(std::istream& in) const {
+            return std::make_unique<HashPool<T>>(in);
         }
     };
 }
