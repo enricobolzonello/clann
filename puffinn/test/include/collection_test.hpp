@@ -119,7 +119,7 @@ namespace collection {
                 for (int sample=0; sample < NUM_SAMPLES; sample++) {
                     auto query = UnitVectorFormat::generate_random(dimensions);
                     auto exact = table.search_bf(query, k);
-                    auto res = table.search(query, k, recall);
+                    auto res = table.search(query, k, recall, 0.0);
 
                     REQUIRE(res.size() == static_cast<size_t>(adjusted_k));
                     for (auto i : exact) {
@@ -210,7 +210,7 @@ namespace collection {
                 for (int sample=0; sample < NUM_SAMPLES; sample++) {
                     auto query = SetFormat::generate_random(dimensions);
                     auto exact = table.search_bf(query, k);
-                    auto res = table.search(query, k, recall, FilterType::None);
+                    auto res = table.search(query, k, recall, 0.0, FilterType::None);
 
                     REQUIRE(res.size() == static_cast<size_t>(adjusted_k));
                     for (auto i : exact) {
@@ -276,7 +276,7 @@ namespace collection {
             for (int sample=0; sample < samples; sample++) {
                 auto query = UnitVectorFormat::generate_random(dims);
                 auto exact = index.search_bf(query, k);
-                auto res = index.search(query, k, recall);
+                auto res = index.search(query, k, recall, 0.0);
 
                 REQUIRE(res.size() == k);
                 for (auto i : exact) {
@@ -390,14 +390,14 @@ namespace collection {
         index.rebuild();
 
         auto query = T::Format::generate_random(args);
-        auto res1 = index.search(query, k, 0.5);
+        auto res1 = index.search(query, k, 0.5, 0.0);
 
         std::stringstream s;
         index.serialize(s);
         Index<T, H, S> deserialized(s);
 
         // Test that searches give the same result.
-        auto res2 = deserialized.search(query, k, 0.5);
+        auto res2 = deserialized.search(query, k, 0.5, 0.0);
         REQUIRE(res1 == res2);
 
         // Test that ser(de(ser(Index))) == ser(Index), which should catch errors in parts
@@ -480,9 +480,9 @@ namespace collection {
         index.insert(query);
         index.rebuild();
 
-        auto res1 = index.search(query, k, recall);
+        auto res1 = index.search(query, k, recall, 0.0);
         res1.erase(res1.begin());
-        auto res2 = index.search_from_index(n, k, recall);
+        auto res2 = index.search_from_index(n, k, recall,0.0);
         res2.pop_back();
         REQUIRE(res1 == res2);
     }

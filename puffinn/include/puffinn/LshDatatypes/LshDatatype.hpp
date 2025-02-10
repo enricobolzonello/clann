@@ -4,7 +4,7 @@
 #include <puffinn/typedefs.hpp>
 
 struct LshDatatype_DECL{
-    
+    virtual ~LshDatatype_DECL() {}
     virtual void concatenate_hashes(const std::vector<unsigned int>& indices, const uint64_t* hashes,const uint_fast8_t& bits_per_function) = 0;
     virtual void concatenate_hash(const uint64_t& hash,const uint_fast8_t& bits_per_function) = 0;
     virtual void operator<<= (int bits) = 0;    
@@ -59,7 +59,7 @@ public:
         return res;
     }
     //This is a hacky solution for now, this works because the function is only ever called for a prefix_mask which starts as all 1's
-    void pop_hash(unsigned int bits) {
+    void pop_hash(unsigned int bits) override {
         this->value = this->value << bits;  
     } 
     
@@ -99,9 +99,9 @@ public:
         return this->value;
     }
 
-    dataType getBPF() const{
+    /*dataType getBPF() const{
         return this->bits_per_function;
-    }
+    }*/
 
     bool operator< (HammingType<dataType> const& other) const {
         return this->value < other.getValue();

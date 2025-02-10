@@ -308,8 +308,8 @@ impl RunMetrics {
                 git_commit_hash,
                 query_idx,
                 query_time_ms,
-                distance_computations,
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                distance_computations
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 self.config.num_clusters_factor,
                 self.config.kb_per_point,
@@ -318,7 +318,7 @@ impl RunMetrics {
                 self.config.dataset_name,
                 git_hash,
                 query_idx as i64,
-                query.query_time.as_nanos() as i64,
+                query.query_time.as_millis() as i64,
                 query.distance_computations as i64,
             ],
         )?;
@@ -355,7 +355,7 @@ impl RunMetrics {
                 cluster_time_ms,
                 cluster_size,
                 cluster_distance_computations,
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 self.config.num_clusters_factor,
                 self.config.kb_per_point,
@@ -366,7 +366,7 @@ impl RunMetrics {
                 query_idx as i64,
                 cluster_idx as i64,
                 n_candidates as i64,
-                timing.as_nanos() as i64,
+                timing.as_micros() as i64,
                 *cluster_size as i64,
                 distance_comp as i64,
             ],

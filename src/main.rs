@@ -1,6 +1,6 @@
-use std::{env, time::Instant};
+use std::{env, fs, time::{Duration, Instant}};
 
-use clann::{build, core::Config, enable_run_metrics, init_with_config, metricdata::{AngularData, MetricData}, save_metrics, search, utils::{load_hdf5_dataset, MetricsGranularity}};
+use clann::{build, core::Config, enable_run_metrics, init_from_file, init_with_config, metricdata::{AngularData, EuclideanData, MetricData}, save_metrics, search, serialize, utils::{load_hdf5_dataset, MetricsGranularity}};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 
@@ -10,31 +10,43 @@ fn main() {
         .init();
 
     let args: Vec<String> = env::args().collect();
-
     info!("Starting search benchmark");
     let total_start = Instant::now();
 
     const DB_PATH: &str = "./clann_results.sqlite3";
+    const INDEX_DIR: &str = "./__index_cache__";
 
     let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
     let data = AngularData::new(data_raw);
     let n = data.num_points();
 
     let config = Config{
-        kb_per_point: 1,
+        kb_per_point: 10,
         num_clusters_factor: 0.2,
         k: 10,
         delta: 0.9,
-        dataset_name: "glove-25-angular".to_owned(),
+        dataset_name: "glove-25-angular.hdf5".to_owned(),
     };
 
-    let mut index = init_with_config(data, config).unwrap();
+    let index_path = format!(
+        "{}/index_{}_k{:.2}_kb{}.h5",
+        INDEX_DIR, config.dataset_name, config.num_clusters_factor, config.kb_per_point
+    );
+
+    let mut index = if fs::metadata(&index_path).is_ok() {
+        info!("Loading index from file: {}", index_path);
+        init_from_file(data, &index_path).unwrap()
+    } else {
+        info!("No saved index found, initializing a new one");
+        let mut new_index = init_with_config(data, config).unwrap();
+        build(&mut new_index).map_err(|e| eprintln!("Error: {}", e)).unwrap();
+        serialize(&new_index, INDEX_DIR).unwrap();
+        new_index
+    };
+
     enable_run_metrics(&mut index).unwrap();
 
-    build(&mut index).map_err(|e| eprintln!("Error: {}", e)).unwrap();
-
     info!("Processing {} queries", queries.nrows());
-    let search_start = Instant::now();
     let mut distance_results = Vec::with_capacity(queries.nrows());
     
     let progress_bar = ProgressBar::new(queries.nrows() as u64);
@@ -43,16 +55,17 @@ fn main() {
         .expect("Failed to set progress bar style")
         .progress_chars("=>-"));
 
-    let mut total_search_time = std::time::Duration::new(0, 0);
-    let mut min_search_time = std::time::Duration::new(u64::MAX, 0);
-    let mut max_search_time = std::time::Duration::new(0, 0);
+    let mut total_queries = 0u32;
+    let mut min_search_time = Duration::from_secs(u64::MAX);
+    let mut max_search_time = Duration::from_secs(0);
+    let mut total_search_time = Duration::from_secs(0);
 
     for (i, query) in queries.rows().into_iter().enumerate() {
         let query_start = Instant::now();
-        
         let result = search(&mut index, query.as_slice().unwrap()).unwrap();
-        
         let query_time = query_start.elapsed();
+
+        total_queries += 1;
         total_search_time += query_time;
         min_search_time = min_search_time.min(query_time);
         max_search_time = max_search_time.max(query_time);
@@ -63,10 +76,9 @@ fn main() {
         distance_results.push(distances);
 
         if (i + 1) % 1000 == 0 {
-            let avg_time = total_search_time / (i as u32 + 1);
             progress_bar.set_message(format!(
-                "Avg: {:?} Min: {:?} Max: {:?}", 
-                avg_time, min_search_time, max_search_time
+                "Min: {:?} Max: {:?}", 
+                min_search_time, max_search_time
             ));
         }
         
@@ -74,17 +86,16 @@ fn main() {
     }
 
     progress_bar.finish_with_message("Search complete");
-    
-    let total_search_time = search_start.elapsed();
+
+    let average_time = total_search_time / total_queries;
 
     info!("All queries processed in {:?}", total_search_time);
-    info!("Average query time: {:?}", total_search_time / queries.nrows() as u32);
+    info!("Average query time: {:?}", average_time);
     info!("Min query time: {:?}", min_search_time);
     info!("Max query time: {:?}", max_search_time);
     info!("Total results: {}", distance_results.len());
 
-    // Save metrics
-    if args.len() > 2 && &args[1] == "save" {
+    if args.len() > 1 && &args[1] == "--save" {
         info!("Saving metrics to {}", DB_PATH);
         save_metrics(&mut index, 
             DB_PATH,
