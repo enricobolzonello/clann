@@ -3,8 +3,6 @@ use std::{fs::File, io::{self, Read}};
 use clann::core::Config;
 use indicatif::{ProgressBar, ProgressStyle};
 
-pub const DB_PATH: &str = "./clann_results.sqlite3";
-
 pub mod db_utils;
 
 pub fn load_configs_from_file(path: &str) -> io::Result<Vec<Config>> {
