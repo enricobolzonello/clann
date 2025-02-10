@@ -15,12 +15,8 @@ extern "C" {
     int CPUFFINN_index_rebuild(CPUFFINN* index);
 
     // For float data (angular)
-    void CPUFFINN_index_insert_float(CPUFFINN* index, float* point, int dimension);
-    uint32_t* CPUFFINN_search_float(CPUFFINN* index, float* query, unsigned int k, float recall, float max_sim, int dimension);
-
-    // For uint32_t data (jaccard)
-    void CPUFFINN_index_insert_uint32(CPUFFINN* index, uint32_t* point, int dimension);
-    uint32_t* CPUFFINN_search_uint32(CPUFFINN* index, uint32_t* query, unsigned int k, float recall, float max_sim, int dimension);
+    void CPUFFINN_index_insert_cosine(CPUFFINN* index, float* point, int dimension);
+    uint32_t* CPUFFINN_search_cosine(CPUFFINN* index, float* query, unsigned int k, float recall, float max_sim, int dimension);
 
     unsigned int CPUFFINN_get_distance_computations();
     void CPUFFINN_clear_distance_computations();

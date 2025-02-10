@@ -61,31 +61,15 @@ extern "C" {
     }
 
     // Insert a point into the index
-    void CPUFFINN_index_insert_float(CPUFFINN* index, float* point, int dimension) {
+    void CPUFFINN_index_insert_cosine(CPUFFINN* index, float* point, int dimension) {
         auto cpp_index = reinterpret_cast<puffinn::Index<puffinn::CosineSimilarity>*>(index);
         cpp_index->insert(std::vector<float>(point, point + dimension));
     }
 
     // Search in the index
-    uint32_t* CPUFFINN_search_float(CPUFFINN* index, float* query, unsigned int k, float recall, float max_sim, int dimension) {
+    uint32_t* CPUFFINN_search_cosine(CPUFFINN* index, float* query, unsigned int k, float recall, float max_sim, int dimension) {
         auto cpp_index = reinterpret_cast<puffinn::Index<puffinn::CosineSimilarity>*>(index);
         auto result = cpp_index->search(std::vector<float>(query, query + dimension), k, recall, max_sim);
-
-        uint32_t* c_result = (uint32_t*)malloc(result.size() * sizeof(uint32_t));
-        std::copy(result.begin(), result.end(), c_result);
-        return c_result;
-    }
-
-    // Insert a point into the index
-    void CPUFFINN_index_insert_uint32(CPUFFINN* index, uint32_t* point, int dimension) {
-        auto cpp_index = reinterpret_cast<puffinn::Index<puffinn::JaccardSimilarity>*>(index);
-        cpp_index->insert(std::vector<uint32_t>(point, point + dimension));
-    }
-
-    // Search in the index
-    uint32_t* CPUFFINN_search_uint32(CPUFFINN* index, uint32_t* query, unsigned int k, float recall, float max_sim, int dimension) {
-        auto cpp_index = reinterpret_cast<puffinn::Index<puffinn::JaccardSimilarity>*>(index);
-        auto result = cpp_index->search(std::vector<uint32_t>(query, query + dimension), k, recall, max_sim);
 
         uint32_t* c_result = (uint32_t*)malloc(result.size() * sizeof(uint32_t));
         std::copy(result.begin(), result.end(), c_result);

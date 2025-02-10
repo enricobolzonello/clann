@@ -80,8 +80,7 @@ impl PuffinnIndex {
         max_dist: f32,
         recall: f32,
     ) -> Result<Vec<u32>, String> {
-        // convert distance into similarity
-        let max_sim = 1.0 - max_dist / 2.0;
+        let max_sim = M::convert_to_sim(max_dist);
 
         unsafe {
             let results_ptr = M::search_data(
@@ -123,5 +122,40 @@ pub fn get_distance_computations() -> u32 {
 pub fn clear_distance_computations() {
     unsafe {
         CPUFFINN_clear_distance_computations();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metricdata::AngularData;
+    use crate::utils::load_hdf5_dataset;
+
+    #[test]
+    fn test_angular_create_index() {
+        let (data_raw, _, _) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
+        let data = AngularData::new(data_raw);
+        let memory_limit = 1_000_000_000; // 1GB limit
+
+        let index = PuffinnIndex::new(&data, memory_limit);
+        assert!(index.is_ok(), "Failed to create PuffinnIndex");
+    }
+
+    #[test]
+    fn test_angular_search_index() {
+        let (data_raw, queries, _) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
+        let data = AngularData::new(data_raw);
+        let memory_limit = 1_000_000_000;
+        let index = PuffinnIndex::new(&data, memory_limit).unwrap();
+
+        let binding = queries.row(0);
+        let query = binding.as_slice().unwrap();
+        let k = 10;
+        let max_dist = 1.0;
+        let recall = 0.9;
+
+        let results = index.search::<AngularData<ndarray::OwnedRepr<f32>>>(query, k, max_dist, recall);
+        assert!(results.is_ok(), "Search failed");
+        assert_eq!(results.unwrap().len(), k, "Search did not return k results");
     }
 }

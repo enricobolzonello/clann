@@ -21,7 +21,7 @@ fn main() {
     let n = data.num_points();
 
     let config = Config{
-        kb_per_point: 10,
+        kb_per_point: 1,
         num_clusters_factor: 0.2,
         k: 10,
         delta: 0.9,
