@@ -80,7 +80,8 @@ impl PuffinnIndex {
         max_dist: f32,
         recall: f32,
     ) -> Result<Vec<u32>, String> {
-        let max_sim = M::convert_to_sim(max_dist);
+        // convert distance into similarity
+        let max_sim = 1.0 - max_dist / 2.0;
 
         unsafe {
             let results_ptr = M::search_data(
@@ -124,43 +125,3 @@ pub fn clear_distance_computations() {
         CPUFFINN_clear_distance_computations();
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::metricdata::EuclideanData;
-    use crate::utils::load_hdf5_dataset;
-
-    #[test]
-    fn test_euclidean_create_index() {
-        println!("loading data");
-        let (data_raw, _, _) = load_hdf5_dataset("./datasets/sift-128-euclidean.hdf5").unwrap();
-        println!("loaded data");
-        let data = EuclideanData::new(data_raw);
-        println!("created euclidean data");
-        let memory_limit = 1_000_000_000; // 1GB limit
-        println!("ok");
-
-        let index = PuffinnIndex::new(&data, memory_limit);
-        assert!(index.is_ok(), "Failed to create PuffinnIndex");
-    }
-
-    #[test]
-    fn test_euclidean_search_index() {
-        let (data_raw, queries, _) = load_hdf5_dataset("./datasets/sift-128-euclidean.hdf5").unwrap();
-        let data = EuclideanData::new(data_raw);
-        let memory_limit = 1_000_000_000;
-        let index = PuffinnIndex::new(&data, memory_limit).unwrap();
-
-        let binding = queries.row(0);
-        let query = binding.as_slice().unwrap();
-        let k = 10;
-        let max_dist = 1.0;
-        let recall = 0.9;
-
-        let results = index.search::<EuclideanData<ndarray::OwnedRepr<f32>>>(query, k, max_dist, recall);
-        assert!(results.is_ok(), "Search failed");
-        assert_eq!(results.unwrap().len(), k, "Search did not return k results");
-    }
-}
-

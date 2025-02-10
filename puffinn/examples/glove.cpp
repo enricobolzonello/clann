@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
 
             // Find the indices of the k nearest words, sorted by their similarity.
             // We ignore the most similar word since it will always be the query word itself.
-            auto res = index.search(query_vector, k+1, recall, 0.0); 
+            auto res = index.search(query_vector, k+1, recall); 
 
             // Print the k closest words.
             for (size_t i=1; i < k+1; i++) {

@@ -37,7 +37,8 @@ fn main() {
         .flag("-Wall")
         .flag("-Wextra")
         .flag("-O3")
-        .flag("-fopenmp");
+        .flag("-fopenmp")
+        .flag("-lhdf5_cpp");
     for path in &hdf5.include_paths {
         build.include(path);
     }

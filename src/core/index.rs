@@ -57,6 +57,13 @@ where
     ///
     /// # Errors
     /// Returns a `ClusteredIndexError::ConfigError` if the configuration is invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// let config = Config::default();
+    /// let data = EuclideanData::new(your_array);
+    /// let index = ClusteredIndex::new(config, data).unwrap();
+    /// ```
     pub fn new(config: Config, data: T) -> Result<Self> {
         if data.num_points() == 0 {
             return Err(ClusteredIndexError::DataError("empty dataset".to_string()));
@@ -64,7 +71,8 @@ where
 
         info!("Initializing Index with config {:?}", config);
 
-        let k = ((config.num_clusters_factor as f64 * (data.num_points() as f64).sqrt()).floor() as usize).max(1);
+        let k = (config.num_clusters_factor as f64 * (data.num_points() as f64).sqrt()).floor()
+            as usize;
 
         Ok(ClusteredIndex {
             data,
@@ -138,6 +146,11 @@ where
     ///
     /// # Errors
     /// Returns a `ClusteredIndexError::PuffinnCreationError` if there are any errors in one of the PUFFINN index creation
+    ///
+    /// # Examples
+    /// ```
+    /// index.build();
+    /// ```
     pub fn build(&mut self) -> Result<()> {
         let total_clusters = self.clusters.capacity();
         info!("Starting build process with {} clusters", total_clusters);
@@ -165,16 +178,17 @@ where
                     idx,
                     center_idx,
                     radius,
-                    brute_force: false,
+                    brute_force: assignment_indexes.len() < 500,
                     assignment: assignment_indexes,
                 };
 
                 trace!(
-                    "Cluster {}: center_idx={}, points={}, radius={}",
+                    "Cluster {}: center_idx={}, points={}, radius={}, brute force? {}",
                     idx,
                     cluster.center_idx,
                     cluster.assignment.len(),
                     cluster.radius,
+                    cluster.brute_force
                 );
 
                 cluster
@@ -183,20 +197,18 @@ where
 
         // 2) CREATE PUFFINN INDEXES
         info!("Creating Puffinn indexes...");
-        for (cluster_idx, cluster) in self.clusters.iter_mut().enumerate() {
-            
-            // Progress logging
-            if cluster_idx % 10 == 0 {
-                info!(
-                    "Processing cluster {}/{} ({}%)",
-                    cluster_idx + 1,
-                    total_clusters,
-                    ((cluster_idx + 1) as f32 / total_clusters as f32 * 100.0).round()
-                );
-            }
-
+        for (cluster_idx, cluster) in self.clusters.iter().enumerate() {
             if cluster.assignment.is_empty() {
                 debug!("Skipping empty cluster {}", cluster_idx);
+                continue;
+            }
+
+            if cluster.brute_force {
+                self.puffinn_indices.push(None);
+                info!("Skipping cluster {}, will do brute force", cluster_idx);
+                if let Some(metrics) = &mut self.metrics {
+                    metrics.add_greedy_cluster_count();
+                }
                 continue;
             }
 
@@ -213,6 +225,16 @@ where
                 cluster.assignment.len()
             );
 
+            // Progress logging
+            if cluster_idx % 10 == 0 {
+                info!(
+                    "Processing cluster {}/{} ({}%)",
+                    cluster_idx + 1,
+                    total_clusters,
+                    ((cluster_idx + 1) as f32 / total_clusters as f32 * 100.0).round()
+                );
+            }
+
             // Create Puffinn index
             // TODO: i dont like the clone
             match PuffinnIndex::new(
@@ -223,20 +245,11 @@ where
                     self.puffinn_indices.push(Some(puffinn_index));
                 }
                 Err(e) => {
-                    if e.contains("insufficient memory") {
-                        cluster.brute_force = true;
-                        self.puffinn_indices.push(None);
-                        info!("Skipping cluster {}, will do brute force", cluster_idx);
-                        if let Some(metrics) = &mut self.metrics {
-                            metrics.add_greedy_cluster_count();
-                        }
-                    }else{
-                        error!(
-                            "Failed to create Puffinn index for cluster {}: {:?}",
-                            cluster_idx, e
-                        );
-                        return Err(ClusteredIndexError::PuffinnCreationError(e));
-                    }
+                    error!(
+                        "Failed to create Puffinn index for cluster {}: {:?}",
+                        cluster_idx, e
+                    );
+                    return Err(ClusteredIndexError::PuffinnCreationError(e));
                 }
             }
         }

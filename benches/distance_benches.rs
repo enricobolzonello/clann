@@ -1,60 +1,61 @@
 /// This tests serves two purposes:
 /// 1. Compare on the same datasets and configs the puffinn and clann implementation
 /// 2. Comparing different configurations for clann, since results will be stored in the db
-///
+/// 
 use clann::core::Config;
 use clann::metricdata::{AngularData, MetricData};
 use clann::puffinn_binds::puffinn_index::get_distance_computations;
 use clann::puffinn_binds::PuffinnIndex;
 use clann::utils::load_hdf5_dataset;
 use clann::utils::metrics::MetricsGranularity;
-use clann::{build, init_from_file, init_with_config, save_metrics, search, serialize};
+use clann::{build, init_with_config, save_metrics, search};
 use criterion::{criterion_group, criterion_main, Criterion};
 use env_logger::Env;
-use log::info;
 use rusqlite::{params, Connection};
 
 use core::f32;
-use std::fs;
 use std::time::{Duration, Instant};
 use utils::db_utils::{
     check_configuration_exists_clann, check_configuration_exists_puffinn, BenchmarkError,
 };
-use utils::{create_progress_bar, load_configs_from_file, print_benchmark_header};
+use utils::{
+    create_progress_bar, load_configs_from_file, print_benchmark_header,
+    DB_PATH,
+};
 
 mod utils;
 
-const INDEX_DIR: &str = "./__index_cache__";
-const DB_PATH: &str = "./clann_results.sqlite3";
 
-fn run_benchmark_config_clann(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+fn run_benchmark_config_clann(
+    config: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
     let dataset_path = format!("./datasets/{}.hdf5", config.dataset_name);
     let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset(&dataset_path)?;
 
     let data = AngularData::new(data_raw);
     let n = data.num_points();
 
-    let index_path = format!(
-        "{}/index_{}_k{:.2}_kb{}.h5",
-        INDEX_DIR, config.dataset_name, config.num_clusters_factor, config.kb_per_point
-    );
-
-    let mut clustered_index = if fs::metadata(&index_path).is_ok() {
-        info!("Loading index from file: {}", index_path);
-        init_from_file(data, &index_path).unwrap()
-    } else {
-        info!("No saved index found, initializing a new one");
-        let mut new_index = init_with_config(data, config.clone()).unwrap();
-        build(&mut new_index)
-            .map_err(|e| eprintln!("Error: {}", e))
-            .unwrap();
-        serialize(&new_index, INDEX_DIR).unwrap();
-        new_index
+    // Attempt to build the clustered index, but skip if it fails
+    let mut clustered_index = match init_with_config(data, config.clone()) {
+        Ok(index) => index,
+        Err(e) => {
+            eprintln!("Failed to initialize clustered index: {:?}", e);
+            return Err(Box::new(e));
+        }
     };
 
     clustered_index
         .enable_metrics()
         .expect("Failed to enable metrics");
+
+    // Skip build if it fails
+    match build(&mut clustered_index) {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Failed to build clustered index: {:?}", e);
+            return Err(Box::new(e));
+        }
+    }
 
     let mut clustered_counts = Vec::new();
     let mut distance_results = Vec::with_capacity(queries.nrows());
@@ -97,7 +98,9 @@ fn run_benchmark_config_clann(config: &Config) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-fn run_benchmark_config_puffinn(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+fn run_benchmark_config_puffinn(
+    config: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
     let dataset_path = format!("./datasets/{}.hdf5", config.dataset_name);
     let (data_raw, queries, _) = load_hdf5_dataset(&dataset_path)?;
 
@@ -117,12 +120,7 @@ fn run_benchmark_config_puffinn(config: &Config) -> Result<(), Box<dyn std::erro
 
         let query_query_start = Instant::now();
         base_index
-            .search::<AngularData<ndarray::OwnedRepr<f32>>>(
-                query_slice,
-                config.k,
-                f32::INFINITY,
-                config.delta,
-            )
+            .search::<AngularData<ndarray::OwnedRepr<f32>>>(query_slice, config.k, f32::INFINITY,config.delta)
             .expect("PUFFINN search failed");
         let query_time = query_query_start.elapsed();
 
@@ -203,6 +201,7 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
     let git_hash = option_env!("GIT_COMMIT_HASH").unwrap_or("NO_COMMIT");
 
     for (config_idx, config) in configs.iter().enumerate() {
+
         // run clann
         match check_configuration_exists_clann(&conn, config, git_hash) {
             Ok(false) => {
