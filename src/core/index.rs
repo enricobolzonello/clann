@@ -522,7 +522,7 @@ where
             .collect::<Result<Vec<usize>>>()
     }    
 
-    // Simple brute force search for small clusters (under 500 points)
+    // Simple brute force search for small clusters
     fn brute_force_search(
         &self,
         cluster: &ClusterCenter,

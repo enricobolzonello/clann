@@ -1,7 +1,9 @@
+use std::cmp::Ordering;
 use std::fs;
 
 use hdf5::File;
 use log::debug;
+use ndarray::{Array2, Axis};
 use ndarray::{Array, Ix1, Ix2};
 
 pub mod metrics;
@@ -9,6 +11,11 @@ pub mod metrics;
 pub use metrics::MetricsGranularity;
 pub use metrics::QueryMetrics;
 pub use metrics::RunMetrics;
+use rand::thread_rng;
+use rand::Rng;
+
+use crate::metricdata::{MetricData, Subset};
+use crate::puffinn_binds::IndexableSimilarity;
 
 pub fn load_hdf5_dataset(filepath: &str) -> Result<(Array<f32, Ix2>, Array<f32, Ix2>, Array<f32, Ix2>), String> {
     let file = File::open(filepath).map_err(|e| format!("Error opening file '{}': {}", filepath, e))?;
@@ -78,4 +85,38 @@ pub fn get_recall_values(
 
 pub fn db_exists(db_file_path: &str) -> bool {
     fs::metadata(db_file_path).is_ok()
+}
+
+pub fn generate_random_unit_vectors(n: usize, dimensions: usize) -> Array2<f32> {
+    let mut rng = thread_rng();
+    let mut data = Array2::<f32>::zeros((n, dimensions));
+    
+    for mut row in data.axis_iter_mut(Axis(0)) {
+        let vec: Vec<f32> = (0..dimensions).map(|_| rng.gen::<f32>()).collect();
+        let norm: f32 = vec.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
+        row.assign(&ndarray::arr1(&vec.iter().map(|x| x / norm).collect::<Vec<f32>>()));
+    }
+    
+    data
+}
+
+pub fn brute_force_search<T>(
+    metric_data: &T,
+    query: &[T::DataType],
+    k: usize,
+) -> Vec<u32>
+where
+    T: MetricData + IndexableSimilarity<T> + Subset,
+    <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
+{
+    let mut distances: Vec<(u32, f32)> = (0..metric_data.num_points() as u32)
+        .map(|i| {
+            let dist = metric_data.distance_point(i as usize, query);
+            (i, dist)
+        })
+        .collect();
+
+    distances.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    
+    distances.into_iter().take(k).map(|(idx, _)| idx).collect()
 }

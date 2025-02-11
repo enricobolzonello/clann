@@ -81,7 +81,7 @@ impl PuffinnIndex {
         recall: f32,
     ) -> Result<Vec<u32>, String> {
         let max_sim = M::convert_to_sim(max_dist);
-    
+
         unsafe {
             let results_ptr = M::search_data(
                 self.raw,
@@ -91,31 +91,31 @@ impl PuffinnIndex {
                 max_sim,
                 query.len() as i32,
             );
-    
+
             if results_ptr.is_null() {
                 return Err("Search failed: returned null pointer.".to_string());
             }
-    
+
             let first_value = *results_ptr;
-    
+
             if first_value == 0xFFFFFFFF {
                 libc::free(results_ptr as *mut libc::c_void);
                 return Ok(Vec::new());
             }
-    
+
             let mut results = Vec::new();
             let mut offset = 0;
-    
+
             while offset < k {
                 let val = *(results_ptr.add(offset));
                 results.push(val);
                 offset += 1;
             }
-    
+
             libc::free(results_ptr as *mut libc::c_void);
             Ok(results)
         }
-    }    
+    }
 
     pub fn save_to_file(&self, file_path: &str, index_id: usize) -> Result<(), String> {
         let file_path_cstring = CString::new(file_path)
@@ -143,7 +143,7 @@ pub fn clear_distance_computations() {
 mod tests {
     use super::*;
     use crate::metricdata::AngularData;
-    use crate::utils::load_hdf5_dataset;
+    use crate::utils::{brute_force_search, generate_random_unit_vectors, load_hdf5_dataset};
 
     #[test]
     fn test_angular_create_index() {
@@ -168,8 +168,58 @@ mod tests {
         let max_dist = 1.0;
         let recall = 0.9;
 
-        let results = index.search::<AngularData<ndarray::OwnedRepr<f32>>>(query, k, max_dist, recall);
+        let results =
+            index.search::<AngularData<ndarray::OwnedRepr<f32>>>(query, k, max_dist, recall);
         assert!(results.is_ok(), "Search failed");
         assert_eq!(results.unwrap().len(), k, "Search did not return k results");
+    }
+
+    #[test]
+    fn test_puffinn_angular_search() {
+        let n = 1000;
+        let dimensions = 25;
+        let data_raw = generate_random_unit_vectors(n, dimensions);
+        let data = AngularData::new(data_raw.clone());
+        let memory_limit = 100 * 1024 * 1024; // 100 MB
+
+        let index = PuffinnIndex::new(&data, memory_limit).expect("Failed to create PuffinnIndex");
+
+        let num_samples = 100;
+        let recalls = [0.2, 0.5, 0.95];
+        let ks = [1, 10];
+
+        for &k in &ks {
+            for &recall in &recalls {
+                let mut num_correct = 0;
+                let adjusted_k = k.min(n);
+                let expected_correct = (recall * adjusted_k as f32 * num_samples as f32) as usize;
+
+                for _ in 0..num_samples {
+                    let query_raw = generate_random_unit_vectors(1, dimensions);
+                    let binding = query_raw.row(0);
+                    let query = binding.as_slice().unwrap();
+
+                    let exact = brute_force_search(&data, query, k);
+                    let approx = index
+                        .search::<AngularData<ndarray::OwnedRepr<f32>>>(query, k, 1.0, recall)
+                        .expect("Search failed");
+
+                    assert_eq!(
+                        approx.len(),
+                        adjusted_k,
+                        "Approximate search returned incorrect number of results"
+                    );
+
+                    num_correct += exact.iter().filter(|&&i| approx.contains(&i)).count();
+                }
+
+                assert!(
+                    num_correct >= (0.8 * expected_correct as f32) as usize,
+                    "Recall {} too low for k = {}",
+                    recall,
+                    k
+                );
+            }
+        }
     }
 }
