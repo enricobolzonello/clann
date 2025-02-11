@@ -5,6 +5,8 @@
 #include <vector>
 #include <sstream>
 
+#define EMPTY_RESULT_SENTINEL 0xFFFFFFFF
+
 extern "C" {
     struct CPUFFINN;
     typedef struct CPUFFINN CPUFFINN;

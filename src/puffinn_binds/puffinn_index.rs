@@ -81,7 +81,7 @@ impl PuffinnIndex {
         recall: f32,
     ) -> Result<Vec<u32>, String> {
         let max_sim = M::convert_to_sim(max_dist);
-
+    
         unsafe {
             let results_ptr = M::search_data(
                 self.raw,
@@ -91,17 +91,31 @@ impl PuffinnIndex {
                 max_sim,
                 query.len() as i32,
             );
-
+    
             if results_ptr.is_null() {
                 return Err("Search failed: returned null pointer.".to_string());
             }
-
-            let results_slice = std::slice::from_raw_parts(results_ptr, k);
-            let results = results_slice.to_vec();
-
+    
+            let first_value = *results_ptr;
+    
+            if first_value == 0xFFFFFFFF {
+                libc::free(results_ptr as *mut libc::c_void);
+                return Ok(Vec::new());
+            }
+    
+            let mut results = Vec::new();
+            let mut offset = 0;
+    
+            while offset < k {
+                let val = *(results_ptr.add(offset));
+                results.push(val);
+                offset += 1;
+            }
+    
+            libc::free(results_ptr as *mut libc::c_void);
             Ok(results)
         }
-    }
+    }    
 
     pub fn save_to_file(&self, file_path: &str, index_id: usize) -> Result<(), String> {
         let file_path_cstring = CString::new(file_path)

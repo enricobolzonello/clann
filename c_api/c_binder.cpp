@@ -68,13 +68,33 @@ extern "C" {
 
     // Search in the index
     uint32_t* CPUFFINN_search_cosine(CPUFFINN* index, float* query, unsigned int k, float recall, float max_sim, int dimension) {
+        if (!query || dimension <= 0) {
+            std::cerr << "Error: Query is null or empty.\n";
+            return nullptr;
+        }
+    
         auto cpp_index = reinterpret_cast<puffinn::Index<puffinn::CosineSimilarity>*>(index);
         auto result = cpp_index->search(std::vector<float>(query, query + dimension), k, recall, max_sim);
-
-        uint32_t* c_result = (uint32_t*)malloc(result.size() * sizeof(uint32_t));
-        std::copy(result.begin(), result.end(), c_result);
+    
+        if (result.empty()) {
+            uint32_t* empty_result = static_cast<uint32_t*>(malloc(sizeof(uint32_t)));
+            if (!empty_result) {
+                std::cerr << "Memory allocation failed for empty result!\n";
+                return nullptr;
+            }
+            *empty_result = 0xFFFFFFFF;  // Sentinel value for empty result
+            return empty_result;
+        }
+    
+        uint32_t* c_result = static_cast<uint32_t*>(malloc(result.size() * sizeof(uint32_t)));
+        if (!c_result) {
+            std::cerr << "Memory allocation failed!\n";
+            return nullptr;
+        }
+    
+        std::memcpy(c_result, result.data(), result.size() * sizeof(uint32_t));
         return c_result;
-    }
+    }    
 
     unsigned int CPUFFINN_get_distance_computations() {
         return puffinn::g_performance_metrics.get_distance_computations();

@@ -1,3 +1,4 @@
+use log::{error, warn};
 use ndarray::Data;
 
 use crate::metricdata::{AngularData, MetricData};
@@ -52,8 +53,20 @@ impl<S: Data<Elem = f32>, M: MetricData> IndexableSimilarity<M> for AngularData<
         max_sim: f32,
         dimension: i32,
     ) -> *mut u32 {
-        CPUFFINN_search_cosine(raw, query as *mut f32, k, recall, max_sim, dimension)
-    }
+        if query.is_null() || dimension <= 0 {
+            warn!("Empty query or wrong dimensions");
+            return std::ptr::null_mut();
+        }
+    
+        let result_ptr = CPUFFINN_search_cosine(raw, query as *mut f32, k, recall, max_sim, dimension);
+    
+        if result_ptr.is_null() {
+            error!("Search failed, received null pointer");
+            return std::ptr::null_mut();
+        }
+    
+        result_ptr
+    }    
 
     fn convert_to_sim(distance: f32) -> f32 {
         1.0 - distance / 2.0

@@ -506,15 +506,10 @@ where
     }
 
     fn map_candidates(&self, candidates: &[u32], cluster: &ClusterCenter) -> Result<Vec<usize>> {
-        let mapped: Vec<usize> = candidates
+        candidates
             .iter()
             .map(|&local_idx| {
-                (local_idx as usize)
-                    .try_into()
-                    .map_err(|_| ClusteredIndexError::IndexMappingError(local_idx))
-            })
-            .filter_map(|res| res.ok())
-            .map(|local_idx| {
+                let local_idx = local_idx as usize;
                 if local_idx < cluster.assignment.len() {
                     Ok(cluster.assignment[local_idx])
                 } else {
@@ -524,10 +519,8 @@ where
                     ))
                 }
             })
-            .collect::<Result<Vec<usize>>>()?;
-
-        Ok(mapped)
-    }
+            .collect::<Result<Vec<usize>>>()
+    }    
 
     // Simple brute force search for small clusters (under 500 points)
     fn brute_force_search(

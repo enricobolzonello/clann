@@ -354,7 +354,7 @@ impl RunMetrics {
                 n_candidates,
                 cluster_time_ms,
                 cluster_size,
-                cluster_distance_computations,
+                cluster_distance_computations
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 self.config.num_clusters_factor,

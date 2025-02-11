@@ -22,10 +22,10 @@ fn main() {
 
     let config = Config{
         kb_per_point: 1,
-        num_clusters_factor: 0.2,
+        num_clusters_factor: 0.4,
         k: 10,
         delta: 0.9,
-        dataset_name: "glove-25-angular.hdf5".to_owned(),
+        dataset_name: "glove-25-angular".to_owned(),
     };
 
     let index_path = format!(
