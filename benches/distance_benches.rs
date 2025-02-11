@@ -11,7 +11,8 @@ use clann::utils::metrics::MetricsGranularity;
 use clann::{build, init_from_file, init_with_config, save_metrics, search, serialize};
 use criterion::{criterion_group, criterion_main, Criterion};
 use env_logger::Env;
-use log::info;
+use log::{error, info, warn};
+use ndarray::{Array, Ix2, OwnedRepr};
 use rusqlite::{params, Connection};
 
 use core::f32;
@@ -27,11 +28,7 @@ mod utils;
 const INDEX_DIR: &str = "./__index_cache__";
 const DB_PATH: &str = "./clann_results.sqlite3";
 
-fn run_benchmark_config_clann(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let dataset_path = format!("./datasets/{}.hdf5", config.dataset_name);
-    let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset(&dataset_path)?;
-
-    let data = AngularData::new(data_raw);
+fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>, queries: &Array<f32, Ix2>, ground_truth_distances: &Array<f32, Ix2>) -> Result<(), Box<dyn std::error::Error>> {
     let n = data.num_points();
 
     let index_path = format!(
@@ -97,20 +94,19 @@ fn run_benchmark_config_clann(config: &Config) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-fn run_benchmark_config_puffinn(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let dataset_path = format!("./datasets/{}.hdf5", config.dataset_name);
-    let (data_raw, queries, _) = load_hdf5_dataset(&dataset_path)?;
-
-    let data = AngularData::new(data_raw);
+fn run_benchmark_config_puffinn(config: &Config, data: &AngularData<OwnedRepr<f32>>, queries: &Array<f32, Ix2>) -> Result<(), Box<dyn std::error::Error>> {
     let n = data.num_points();
 
+    info!("Creating PUFFINN index");
     // create index
-    let base_index = PuffinnIndex::new(&data, config.kb_per_point * data.num_points() * 1024)
+    let base_index = PuffinnIndex::new(data, config.kb_per_point * data.num_points() * 1024)
         .expect("Failed to initialize PUFFINN index");
+    info!("PUFFINN index created");
 
     let mut puffinn_counts = Vec::new();
     let mut query_times = Vec::new();
     // run all queries (PUFFINN)
+    info!("Starting search");
     let search_start = Instant::now();
     for query in queries.rows() {
         let query_slice = query.as_slice().expect("Failed to get query slice");
@@ -132,6 +128,7 @@ fn run_benchmark_config_puffinn(config: &Config) -> Result<(), Box<dyn std::erro
         query_times.push(query_time);
     }
     let total_search_time = search_start.elapsed();
+    info!("Search ended");
 
     let conn = Connection::open(DB_PATH)?;
     save_puffinn_results(
@@ -203,16 +200,21 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
     let git_hash = option_env!("GIT_COMMIT_HASH").unwrap_or("NO_COMMIT");
 
     for (config_idx, config) in configs.iter().enumerate() {
+        let dataset_path = format!("./datasets/{}.hdf5", config.dataset_name);
+        let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset(&dataset_path)?;
+
+        let data = AngularData::new(data_raw);
+
         // run clann
         match check_configuration_exists_clann(&conn, config, git_hash) {
             Ok(false) => {
                 // Run benchmark, catching any errors for this specific configuration
-                match run_benchmark_config_clann(config) {
+                match run_benchmark_config_clann(config, data.clone(), &queries, &ground_truth_distances) {
                     Ok(_) => {
-                        println!("CLANN config {} run", config_idx);
+                        info!("CLANN config {} run", config_idx);
                     }
                     Err(e) => {
-                        println!(
+                        error!(
                             "Error running benchmark for configuration {}: {}",
                             config_idx, e
                         );
@@ -220,10 +222,10 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
                 }
             }
             Ok(true) => {
-                println!("Configuration {} already exists (unexpected)", config_idx);
+                warn!("Configuration {} already exists (unexpected)", config_idx);
             }
             Err(BenchmarkError::ConfigExists(msg)) => {
-                println!("Skipping configuration {}: {}", config_idx, msg);
+                info!("Skipping configuration {}: {}", config_idx, msg);
             }
             Err(e) => {
                 return Err(Box::new(e));
@@ -233,12 +235,12 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
         match check_configuration_exists_puffinn(&conn, config) {
             Ok(false) => {
                 // run puffinn
-                match run_benchmark_config_puffinn(config) {
+                match run_benchmark_config_puffinn(config, &data, &queries) {
                     Ok(_) => {
-                        println!("PUFFINN config {} run", config_idx);
+                        info!("PUFFINN config {} run", config_idx);
                     }
                     Err(e) => {
-                        println!(
+                        error!(
                             "Error running puffinn benchmark for configuration {}: {}",
                             config_idx, e
                         );
@@ -246,7 +248,7 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
                 }
             }
             Ok(true) => {
-                println!("Configuration {} already exists", config_idx);
+                info!("Configuration {} already exists", config_idx);
             }
             Err(e) => {
                 return Err(Box::new(e));

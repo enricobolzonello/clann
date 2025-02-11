@@ -31,7 +31,7 @@ pub trait IndexableSimilarity<M: MetricData> {
     fn convert_to_sim(max_dist: f32) -> f32;
 }
 
-impl<S: Data<Elem = f32>, M: MetricData> IndexableSimilarity<M> for AngularData<S> {
+impl<S: Data<Elem = f32> + ndarray::RawDataClone, M: MetricData> IndexableSimilarity<M> for AngularData<S> {
 
     fn similarity_type(&self) -> &'static str {
         "angular"
