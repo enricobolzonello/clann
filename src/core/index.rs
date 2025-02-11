@@ -266,7 +266,7 @@ where
             self.config.k, self.config.delta
         );
 
-        let delta_prime = 1.0 - (1.0 - self.config.delta) / (self.clusters.len() as f32);
+        let delta_prime = self.config.delta;
 
         let sorted_cluster = self.sort_cluster_indices_by_distance(query);
 
