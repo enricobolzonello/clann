@@ -19,7 +19,7 @@ pub fn check_configuration_exists_clann(
     let query = "
         SELECT created_at, recall_mean 
         FROM clann_results 
-        WHERE num_clusters = ?1 
+        WHERE num_clusters BETWEEN ?1 - 1e-6 AND ?1 + 1e-6 
         AND kb_per_point = ?2 
         AND k = ?3 
         AND delta = ?4 
