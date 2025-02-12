@@ -28,11 +28,16 @@ impl<S: Data<Elem = f32> + ndarray::RawDataClone> MetricData for AngularData<S> 
 
     fn distance_point(&self, i: usize, point: &[Self::DataType]) -> f32 { 
         let dot_product = self.data.row(i).dot(&ndarray::ArrayView1::from(point));
-        let cosine_similarity = dot_product / (self.norms[i] * point.iter().map(|&x| x * x).sum::<f32>().sqrt());
+        let norm_point = point.iter().map(|&x| x * x).sum::<f32>().sqrt();
     
+        if norm_point == 0.0 {
+            return 1.0; // Maximum distance for all-zero queries
+        }
+    
+        let cosine_similarity = dot_product / (self.norms[i] * norm_point);
         1.0 - cosine_similarity
-
     }
+      
 
     fn all_distances(&self, j: usize, out: &mut [f32]){
         assert_eq!(out.len(), self.data.nrows());
