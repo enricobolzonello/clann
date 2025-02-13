@@ -22,7 +22,7 @@ pub fn check_configuration_exists_clann(
         WHERE num_clusters BETWEEN ?1 - 1e-6 AND ?1 + 1e-6 
         AND kb_per_point = ?2 
         AND k = ?3 
-        AND delta = ?4 
+        AND delta BETWEEN ?4  - 1e-6 AND ?4 + 1e-6
         AND dataset = ?5 
         AND git_commit_hash = ?6
     ";
@@ -68,7 +68,7 @@ pub fn check_configuration_exists_puffinn(
         FROM puffinn_results 
         WHERE kb_per_point = ?1 
         AND k = ?2 
-        AND delta = ?3 
+        AND delta BETWEEN ?3  - 1e-6 AND ?3 + 1e-6
         AND dataset = ?4
     ";
 

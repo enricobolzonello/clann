@@ -28,7 +28,7 @@ mod utils;
 const INDEX_DIR: &str = "./__index_cache__";
 const DB_PATH: &str = "./clann_results.sqlite3";
 
-fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>, queries: &Array<f32, Ix2>, ground_truth_distances: &Array<f32, Ix2>) -> Result<(), Box<dyn std::error::Error>> {
+fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>, queries: &Array<f32, Ix2>, ground_truth_distances: &Array<f32, Ix2>, config_idx: usize) -> Result<(), Box<dyn std::error::Error>> {
     let n = data.num_points();
 
     let index_path = format!(
@@ -58,6 +58,7 @@ fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>
 
     let search_start = Instant::now();
     // run all queries (CLANN)
+    let progress_bar = create_progress_bar(format!("CLANN config {}", config_idx), queries.nrows() as u64);
     for query in queries.rows() {
         let query_slice = query.as_slice().expect("Failed to get query slice");
 
@@ -73,6 +74,7 @@ fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>
             .distance_computations as u32;
 
         clustered_counts.push(clustered_count);
+        progress_bar.inc(1);
     }
     let total_search_time = search_start.elapsed();
 
@@ -94,7 +96,7 @@ fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>
     Ok(())
 }
 
-fn run_benchmark_config_puffinn(config: &Config, data: &AngularData<OwnedRepr<f32>>, queries: &Array<f32, Ix2>) -> Result<(), Box<dyn std::error::Error>> {
+fn run_benchmark_config_puffinn(config: &Config, data: &AngularData<OwnedRepr<f32>>, queries: &Array<f32, Ix2>, config_idx: usize) -> Result<(), Box<dyn std::error::Error>> {
     let n = data.num_points();
 
     info!("Creating PUFFINN index");
@@ -108,6 +110,8 @@ fn run_benchmark_config_puffinn(config: &Config, data: &AngularData<OwnedRepr<f3
     // run all queries (PUFFINN)
     info!("Starting search");
     let search_start = Instant::now();
+    
+    let progress_bar = create_progress_bar(format!("PUFFINN config {}", config_idx), queries.nrows() as u64);
     for query in queries.rows() {
         let query_slice = query.as_slice().expect("Failed to get query slice");
 
@@ -126,6 +130,8 @@ fn run_benchmark_config_puffinn(config: &Config, data: &AngularData<OwnedRepr<f3
 
         puffinn_counts.push(puffinn_count);
         query_times.push(query_time);
+
+        progress_bar.inc(1);
     }
     let total_search_time = search_start.elapsed();
     info!("Search ended");
@@ -209,7 +215,7 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
         match check_configuration_exists_clann(&conn, config, git_hash) {
             Ok(false) => {
                 // Run benchmark, catching any errors for this specific configuration
-                match run_benchmark_config_clann(config, data.clone(), &queries, &ground_truth_distances) {
+                match run_benchmark_config_clann(config, data.clone(), &queries, &ground_truth_distances, config_idx) {
                     Ok(_) => {
                         info!("CLANN config {} run", config_idx);
                     }
@@ -224,8 +230,8 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
             Ok(true) => {
                 warn!("Configuration {} already exists (unexpected)", config_idx);
             }
-            Err(BenchmarkError::ConfigExists(msg)) => {
-                info!("Skipping configuration {}: {}", config_idx, msg);
+            Err(BenchmarkError::ConfigExists(_msg)) => {
+                info!("Skipping configuration {} for CLANN", config_idx);
             }
             Err(e) => {
                 return Err(Box::new(e));
@@ -235,7 +241,7 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
         match check_configuration_exists_puffinn(&conn, config) {
             Ok(false) => {
                 // run puffinn
-                match run_benchmark_config_puffinn(config, &data, &queries) {
+                match run_benchmark_config_puffinn(config, &data, &queries, config_idx) {
                     Ok(_) => {
                         info!("PUFFINN config {} run", config_idx);
                     }
@@ -248,7 +254,7 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
                 }
             }
             Ok(true) => {
-                info!("Configuration {} already exists", config_idx);
+                info!("Skipping configuration {} for PUFFINN", config_idx);
             }
             Err(e) => {
                 return Err(Box::new(e));
@@ -265,9 +271,7 @@ pub fn run_distance_benchmarks(_c: &mut Criterion) {
         .init();
 
     print_benchmark_header("PUFFINN-CLANN Distance Computations Comparison");
-    let pb = create_progress_bar("Running distance comparison".to_string(), 100);
     compare_implementations_distance().expect("Error in compare implem");
-    pb.finish_with_message("Distance Comparison complete");
 }
 
 criterion_group! {

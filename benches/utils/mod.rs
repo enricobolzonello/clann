@@ -22,12 +22,10 @@ pub fn print_benchmark_header(name: &str) {
 
 pub fn create_progress_bar(name: String, total: u64) -> ProgressBar {
     let pb = ProgressBar::new(total);
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})")
-            .expect("Failed to create progress bar template")
-            .progress_chars("#>-")
-    );
+    pb.set_style(ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
+        .expect("Failed to set progress bar style")
+        .progress_chars("=>-"));
     pb.set_message(name);
     pb
 }
