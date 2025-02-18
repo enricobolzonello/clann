@@ -95,8 +95,6 @@ namespace puffinn {
         // Container of sketches. Also needs to be reset.
         Filterer<TSketch> filterer;
 
-        // Number of bytes allowed to be used.
-        uint64_t memory_limit;
         // Number of values inserted the last time rebuild was called.
         uint32_t last_rebuild = 0;
         // Construction of the hash source is delayed until the
@@ -122,8 +120,6 @@ namespace puffinn {
         /// When using ``CosineSimilarity``, it specifies the dimension that all vectors must have.
         /// When using ``JaccardSimilarity``, it specifies the universe size. All tokens must be
         /// integers between 0, inclusive, and the paramter, exclusive.
-        /// @param memory_limit The number of bytes of memory that the index is permitted to use.
-        /// Using more memory almost always means that queries are more efficient.
         /// @param hash_args Arguments used to construct the source from which hashes are drawn.
         /// This also includes arguments that are specific to the hash family specified in ``THash``.
         /// It is recommended to use the default value.
@@ -131,13 +127,11 @@ namespace puffinn {
         /// It is recommended to use the default value.
         Index(
             typename TSim::Format::Args dataset_args,
-            uint64_t memory_limit,
             const HashSourceArgs<THash>& hash_args = IndependentHashArgs<THash>(),
             const HashSourceArgs<TSketch>& sketch_args = IndependentHashArgs<TSketch>()
         )
           : dataset(Dataset<typename TSim::Format>(dataset_args)),
             filterer(sketch_args, dataset.get_description()),
-            memory_limit(memory_limit),
             hash_args(hash_args.copy())
         {
             static_assert(
@@ -171,7 +165,6 @@ namespace puffinn {
                     lsh_maps.emplace_back(in);
                 }
             }
-            in.read(reinterpret_cast<char*>(&memory_limit), sizeof(uint64_t));
             in.read(reinterpret_cast<char*>(&last_rebuild), sizeof(uint32_t));
         }
 
@@ -206,7 +199,6 @@ namespace puffinn {
                     m.serialize(out);
                 }
             }
-            out.write(reinterpret_cast<const char*>(&memory_limit), sizeof(uint64_t));
             out.write(reinterpret_cast<const char*>(&last_rebuild), sizeof(uint32_t));
         }
 
@@ -241,35 +233,25 @@ namespace puffinn {
                 dataset.get_description());
         }
 
-        /// Rebuild the index using the currently inserted points.
+        /// Rebuild the index using the currently inserted points. Returns the total memory used by the index
         /// 
         /// This is done in parallel by default.
         /// The number of threads used can be specified using the
         /// OMP_NUM_THREADS environment variable.
-        void rebuild() {
+        uint64_t rebuild(unsigned int num_tables) {
+            if (num_tables == 0) {
+                throw std::invalid_argument("num tables should be >0");
+            }
+
             // Compute sketches for the new vectors.
             filterer.add_sketches(dataset, last_rebuild);
 
             auto desc = dataset.get_description();
             auto table_bytes = PrefixMap<THash>::memory_usage(dataset.get_size(), hash_args->function_memory_usage(desc, MAX_HASHBITS));
             auto filterer_bytes = filterer.memory_usage(desc);
-
             uint64_t required_mem = dataset.memory_usage()+filterer_bytes; 
-            unsigned int num_tables = 0;
-            uint64_t table_mem = 0;
-            while (required_mem + table_mem < memory_limit) {
-                num_tables++;
-                table_mem = hash_args->memory_usage(desc, num_tables, MAX_HASHBITS)
-                    + num_tables * table_bytes;
-            }
-            if (num_tables != 0) {
-                num_tables--;
-            }
 
-            // Not enough memory for at least one table
-            if (num_tables == 0) {
-                throw std::invalid_argument("insufficient memory");
-            }
+            uint64_t total_memory = (hash_args->memory_usage(desc, num_tables, MAX_HASHBITS) + num_tables * table_bytes) + required_mem;
 
             // if rebuild has been called before
             if (hash_source) {
@@ -319,6 +301,8 @@ namespace puffinn {
                 lsh_maps[map_idx].rebuild();
             }
             last_rebuild = dataset.get_size();
+
+            return total_memory;
         }
 
         /// Search for the approximate ``k`` nearest neighbors to a query.
@@ -951,7 +935,7 @@ namespace puffinn {
                         std::max(kth_similarity, max_sim)
                     );
                     g_performance_metrics.store_time(Computation::CheckTermination);
-                    if (failure_prob <= 1-recall) {
+                    if (failure_prob <= 1-recall) {                       
                         g_performance_metrics.set_hash_length(depth);
                         g_performance_metrics.set_considered_maps(
                             (MAX_HASHBITS-depth)*lsh_maps.size()+table_idx);

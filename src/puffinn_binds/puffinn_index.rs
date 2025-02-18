@@ -14,8 +14,8 @@ pub struct PuffinnIndex {
 impl PuffinnIndex {
     pub fn new<M: MetricData + IndexableSimilarity<M>>(
         metric_data: &M,
-        memory_limit: usize,
-    ) -> Result<Self, String> {
+        num_maps: usize,
+    ) -> Result<(Self, usize), String> {
         let dataset_type = metric_data.similarity_type();
         let dataset_type_cstr = CString::new(dataset_type).map_err(|_| {
             format!(
@@ -27,8 +27,7 @@ impl PuffinnIndex {
         let raw = unsafe {
             CPUFFINN_index_create(
                 dataset_type_cstr.as_ptr(),
-                metric_data.dimensions() as i32,
-                memory_limit as u64,
+                metric_data.dimensions() as i32
             )
         };
 
@@ -47,14 +46,16 @@ impl PuffinnIndex {
         }
 
         // Rebuild the index after inserting the points.
+        let mut memory = 0;
         unsafe {
-            let r = CPUFFINN_index_rebuild(index.raw);
-            if r == 1 {
+            let r = CPUFFINN_index_rebuild(index.raw, num_maps as u32);
+            if r == 0 {
                 return Err("Failed to create PUFFINN index, insufficient memory".to_string());
             }
+            memory = r;
         }
 
-        Ok(index)
+        Ok((index, memory as usize))
     }
 
     pub fn new_from_file(file_path: &str, dataset_name: &str) -> Result<Self, String> {
@@ -149,18 +150,18 @@ mod tests {
     fn test_angular_create_index() {
         let (data_raw, _, _) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
         let data = AngularData::new(data_raw);
-        let memory_limit = 1_000_000_000; // 1GB limit
+        let num_maps = 84;
 
-        let index = PuffinnIndex::new(&data, memory_limit);
+        let index = PuffinnIndex::new(&data, num_maps);
         assert!(index.is_ok(), "Failed to create PuffinnIndex");
     }
 
     #[test]
     fn test_angular_search_index() {
         let (data_raw, queries, _) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
-        let data = AngularData::new(data_raw);
-        let memory_limit = 1_000_000_000;
-        let index = PuffinnIndex::new(&data, memory_limit).unwrap();
+        let data: AngularData<ndarray::OwnedRepr<f32>> = AngularData::new(data_raw);
+        let num_maps = 84;
+        let (index, _memory) = PuffinnIndex::new(&data, num_maps).unwrap();
 
         let binding = queries.row(0);
         let query = binding.as_slice().unwrap();
@@ -180,9 +181,9 @@ mod tests {
         let dimensions = 25;
         let data_raw = generate_random_unit_vectors(n, dimensions);
         let data = AngularData::new(data_raw.clone());
-        let memory_limit = 100 * 1024 * 1024; // 100 MB
+        let num_maps = 40;
 
-        let index = PuffinnIndex::new(&data, memory_limit).expect("Failed to create PuffinnIndex");
+        let (index, _memory) = PuffinnIndex::new(&data, num_maps).expect("Failed to create PuffinnIndex");
 
         let num_samples = 100;
         let recalls = [0.2, 0.5, 0.95];

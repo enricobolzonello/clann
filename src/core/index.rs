@@ -113,7 +113,6 @@ where
         let mut puffinn_indices = Vec::new();
         for c in &clusters {
             if !c.brute_force {
-                // TODO: load puffinn index
                 let index = PuffinnIndex::new_from_file(
                     file_path, 
                     &format!("index_{}", c.idx)
@@ -204,12 +203,10 @@ where
                 metrics.log_cluster_size(cluster.assignment.len());
             }
 
-            let cluster_memory_limit = cluster.assignment.len() * self.config.kb_per_point * 1024;
-
             debug!(
-                "Cluster {}: Memory limit {}, points: {}",
+                "Cluster {}: L {}, points: {}",
                 cluster_idx,
-                cluster_memory_limit,
+                self.config.num_tables,
                 cluster.assignment.len()
             );
 
@@ -217,10 +214,13 @@ where
             // TODO: i dont like the clone
             match PuffinnIndex::new(
                 &self.data.subset(cluster.assignment.clone()),
-                cluster_memory_limit,
+                self.config.num_tables,
             ) {
-                Ok(puffinn_index) => {
+                Ok((puffinn_index, memory_used)) => {
                     self.puffinn_indices.push(Some(puffinn_index));
+                    if let Some(metrics) = &mut self.metrics {
+                        metrics.add_memory_used(memory_used);
+                    }
                 }
                 Err(e) => {
                     if e.contains("insufficient memory") {
@@ -247,6 +247,9 @@ where
             "Build process completed. Total clusters: {}, Indexing time: {:.2?}",
             total_clusters, indexing_duration
         );
+        if let Some(metrics) = &mut self.metrics {
+            info!("Memory used: {}", metrics.memory_used_bytes)
+        }
 
         Ok(())
     }
@@ -395,7 +398,6 @@ where
         granularity: MetricsGranularity,
         ground_truth_distances: &Array<f32, Ix2>,
         run_distances: &[Vec<f32>],
-        dataset_len: usize,
         total_search_time: &Duration,
     ) -> Result<()> {
         if !db_exists(&db_path) {
@@ -412,7 +414,6 @@ where
                     metrics.compute_run_statistics(
                         ground_truth_distances,
                         run_distances,
-                        dataset_len,
                         total_search_time,
                     );
 
@@ -438,11 +439,11 @@ where
         }
 
         let file_path = format!(
-            "{}/index_{}_k{:.2}_kb{}.h5",
+            "{}/index_{}_k{:.2}_L{}.h5",
             directory,
             self.config.dataset_name,
             self.config.num_clusters_factor,
-            self.config.kb_per_point
+            self.config.num_tables
         );
         let file = File::create(file_path.clone())
             .map_err(|e| ClusteredIndexError::SerializeError(e.to_string()))?;
@@ -544,3 +545,66 @@ where
         Ok(priority_queue.to_list())
     }
 }
+
+#[cfg(test)]
+    mod tests {
+        use ndarray::arr2;
+        use crate::{core::Config, metricdata::AngularData};
+
+        use super::{ClusterCenter, ClusteredIndex};
+
+        #[test]
+        fn test_sort_cluster() {
+            let points = arr2(&[
+                [0.1, 0.9, 0.4],
+                [0.7, 0.2, 0.6],
+                [0.5, 0.3, 0.9],
+                [0.8, 0.4, 0.1],
+                [0.2, 0.1, 0.8],
+                [0.9, 0.8, 0.3],
+                [0.3, 0.6, 0.5],
+                [0.4, 0.3, 0.7],
+                [0.1, 0.2, 0.9],
+                [0.6, 0.7, 0.8],
+                [0.2, 0.8, 0.1],
+                [0.9, 0.2, 0.4],
+                [0.3, 0.5, 0.6],
+                [0.1, 0.9, 0.2],
+                [0.7, 0.4, 0.6],
+                [0.8, 0.3, 0.2],
+                [0.4, 0.6, 0.3],
+                [0.2, 0.7, 0.9],
+                [0.9, 0.4, 0.8],
+                [0.5, 0.1, 0.3],
+            ]);
+
+            let data = AngularData::new(points);
+
+            let cluster_indices: [usize; 3] = [6, 3, 17];
+            let mut clusters = Vec::new();
+            for (idx, center_idx) in cluster_indices.iter().enumerate() {
+                clusters.push(ClusterCenter {
+                    idx,
+                    center_idx: *center_idx,
+                    radius: 0.0,
+                    assignment: vec![],
+                    brute_force: false,
+                });
+            }
+
+            let config = Config::default();
+
+            let mut index = ClusteredIndex{
+                data,
+                clusters,
+                config,
+                puffinn_indices: Vec::new(),
+                metrics: None,
+            };
+
+            let sorted_indices = index.sort_cluster_indices_by_distance(&[0.1,0.0,0.7]);
+
+            assert_eq!(sorted_indices, vec![2,0,1]);            
+
+        }
+    }

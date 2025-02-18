@@ -13,8 +13,8 @@ extern "C" {
 
     CPUFFINN* CPUFFINN_load_from_file(const char* file_name, const char* dataset_name);
 
-    CPUFFINN* CPUFFINN_index_create(const char* dataset_type, int dataset_args, uint64_t memory_limit);
-    int CPUFFINN_index_rebuild(CPUFFINN* index);
+    CPUFFINN* CPUFFINN_index_create(const char* dataset_type, int dataset_args);
+    uint64_t CPUFFINN_index_rebuild(CPUFFINN* index, unsigned int num_maps);
 
     // For float data (angular)
     void CPUFFINN_index_insert_cosine(CPUFFINN* index, float* point, int dimension);

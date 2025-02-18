@@ -20,7 +20,7 @@ pub fn check_configuration_exists_clann(
         SELECT created_at, recall_mean 
         FROM clann_results 
         WHERE num_clusters BETWEEN ?1 - 1e-6 AND ?1 + 1e-6 
-        AND kb_per_point = ?2 
+        AND num_tables = ?2 
         AND k = ?3 
         AND delta BETWEEN ?4  - 1e-6 AND ?4 + 1e-6
         AND dataset = ?5 
@@ -30,7 +30,7 @@ pub fn check_configuration_exists_clann(
     let mut stmt = conn.prepare(query)?;
     let mut rows = stmt.query(params![
         config.num_clusters_factor,
-        config.kb_per_point,
+        config.num_tables,
         config.k,
         config.delta,
         config.dataset_name,
@@ -43,12 +43,12 @@ pub fn check_configuration_exists_clann(
         
         let msg = format!(
             "Configuration already tested on {} with recall {:.3}:\n\
-             Dataset: {}, Clusters: {}, KB/point: {}, k: {}, delta: {}", 
+             Dataset: {}, Clusters: {}, L: {}, k: {}, delta: {}", 
             created_at,
             recall_mean,
             config.dataset_name,
             config.num_clusters_factor,
-            config.kb_per_point,
+            config.num_tables,
             config.k,
             config.delta
         );
@@ -66,7 +66,7 @@ pub fn check_configuration_exists_puffinn(
     let query = "
         SELECT created_at, queries_per_second 
         FROM puffinn_results 
-        WHERE kb_per_point = ?1 
+        WHERE num_tables = ?1 
         AND k = ?2 
         AND delta BETWEEN ?3  - 1e-6 AND ?3 + 1e-6
         AND dataset = ?4
@@ -74,7 +74,7 @@ pub fn check_configuration_exists_puffinn(
 
     let mut stmt = conn.prepare(query)?;
     let mut rows = stmt.query(params![
-        config.kb_per_point,
+        config.num_tables,
         config.k,
         config.delta,
         config.dataset_name,
@@ -86,11 +86,11 @@ pub fn check_configuration_exists_puffinn(
         
         println!(
             "Puffinn Configuration already tested on {} with {:.3} queries/sec:\n\
-             Dataset: {}, KB/point: {}, k: {}, delta: {}", 
+             Dataset: {}, L: {}, k: {}, delta: {}", 
             created_at,
             queries_per_second,
             config.dataset_name,
-            config.kb_per_point,
+            config.num_tables,
             config.k,
             config.delta
         );

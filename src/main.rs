@@ -1,6 +1,6 @@
 use std::{env, fs, time::{Duration, Instant}};
 
-use clann::{build, core::Config, enable_run_metrics, init_from_file, init_with_config, metricdata::{AngularData, MetricData}, save_metrics, search, serialize, utils::{load_hdf5_dataset, MetricsGranularity}};
+use clann::{build, core::Config, enable_run_metrics, init_from_file, init_with_config, metricdata::AngularData, save_metrics, search, serialize, utils::{load_hdf5_dataset, MetricsGranularity}};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 
@@ -18,10 +18,9 @@ fn main() {
 
     let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
     let data = AngularData::new(data_raw);
-    let n = data.num_points();
 
     let config = Config{
-        kb_per_point: 1,
+        num_tables: 50,
         num_clusters_factor: 0.4,
         k: 10,
         delta: 0.9,
@@ -29,8 +28,8 @@ fn main() {
     };
 
     let index_path = format!(
-        "{}/index_{}_k{:.2}_kb{}.h5",
-        INDEX_DIR, config.dataset_name, config.num_clusters_factor, config.kb_per_point
+        "{}/index_{}_k{:.2}_L{}.h5",
+        INDEX_DIR, config.dataset_name, config.num_clusters_factor, config.num_tables
     );
 
     let mut index = if fs::metadata(&index_path).is_ok() {
@@ -102,7 +101,6 @@ fn main() {
             MetricsGranularity::Cluster,
             &ground_truth_distances,
             &distance_results,
-            n,
             &total_search_time
         ).unwrap();
     }

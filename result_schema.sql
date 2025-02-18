@@ -1,7 +1,7 @@
 -- Main results table storing experiment configurations and overall metrics 
 CREATE TABLE clann_results ( 
 	num_clusters INTEGER NOT NULL, 
-	kb_per_point REAL NOT NULL, 
+	num_tables INTEGER NOT NULL, 
 	k INTEGER NOT NULL, 
 	delta REAL NOT NULL, 
 	dataset TEXT NOT NULL, 
@@ -15,18 +15,18 @@ CREATE TABLE clann_results (
 	recall_mean REAL, 
 	recall_std REAL, 
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
-	PRIMARY KEY (num_clusters, kb_per_point, k, delta, dataset, git_commit_hash), 
+	PRIMARY KEY (num_clusters, num_tables, k, delta, dataset, git_commit_hash), 
 	CONSTRAINT valid_recall CHECK (recall_mean >= 0 AND recall_mean <= 1), 
 	CONSTRAINT valid_recall_std CHECK (recall_std >= 0), 
 	CONSTRAINT positive_clusters CHECK (num_clusters > 0), 
 	CONSTRAINT positive_k CHECK (k > 0), 
-	CONSTRAINT positive_kb CHECK (kb_per_point > 0) 
+	CONSTRAINT positive_kb CHECK (num_tables > 0) 
 ); 
 	
 -- Table for storing per-query metrics 
 CREATE TABLE clann_results_query (
 	num_clusters INTEGER NOT NULL,
-	kb_per_point REAL NOT NULL, 
+	num_tables INTEGER NOT NULL, 
 	k INTEGER NOT NULL, 
 	delta REAL NOT NULL, 
 	dataset TEXT NOT NULL, 
@@ -34,8 +34,8 @@ CREATE TABLE clann_results_query (
 	query_idx INTEGER NOT NULL, 
 	query_time_ms INTEGER, 
 	distance_computations INTEGER,
-	PRIMARY KEY (num_clusters, kb_per_point, k, delta, dataset, git_commit_hash, query_idx), 
-	FOREIGN KEY (num_clusters, kb_per_point, k, delta, dataset, git_commit_hash) REFERENCES clann_results(num_clusters, kb_per_point, k, delta, dataset, git_commit_hash) ON DELETE CASCADE, 
+	PRIMARY KEY (num_clusters, num_tables, k, delta, dataset, git_commit_hash, query_idx), 
+	FOREIGN KEY (num_clusters, num_tables, k, delta, dataset, git_commit_hash) REFERENCES clann_results(num_clusters, num_tables, k, delta, dataset, git_commit_hash) ON DELETE CASCADE, 
 	CONSTRAINT positive_time CHECK (query_time_ms >= 0), 
 	CONSTRAINT positive_computations CHECK (distance_computations >= 0) 
 ); 
@@ -43,7 +43,7 @@ CREATE TABLE clann_results_query (
 -- Table for storing detailed per-cluster metrics for each query 
 CREATE TABLE clann_results_query_cluster ( 
 	num_clusters INTEGER NOT NULL, 
-	kb_per_point REAL NOT NULL, 
+	num_tables INTEGER NOT NULL, 
 	k INTEGER NOT NULL, 
 	delta REAL NOT NULL, 
 	dataset TEXT NOT NULL, 
@@ -54,8 +54,8 @@ CREATE TABLE clann_results_query_cluster (
 	cluster_time_ms INTEGER, 
 	cluster_size INTEGER, 
 	cluster_distance_computations INTEGER, 
-	PRIMARY KEY (num_clusters, kb_per_point, k, delta, dataset, git_commit_hash, query_idx, cluster_idx), 
-	FOREIGN KEY (num_clusters, kb_per_point, k, delta, dataset, git_commit_hash, query_idx) REFERENCES clann_results_query(num_clusters, kb_per_point, k, delta, dataset, git_commit_hash, query_idx) ON DELETE CASCADE, 
+	PRIMARY KEY (num_clusters, num_tables, k, delta, dataset, git_commit_hash, query_idx, cluster_idx), 
+	FOREIGN KEY (num_clusters, num_tables, k, delta, dataset, git_commit_hash, query_idx) REFERENCES clann_results_query(num_clusters, num_tables, k, delta, dataset, git_commit_hash, query_idx) ON DELETE CASCADE, 
 	CONSTRAINT positive_candidates CHECK (n_candidates >= 0), 
 	CONSTRAINT positive_cluster_time CHECK (cluster_time_ms >= 0),
 	CONSTRAINT positive_cluster_size CHECK (cluster_size >= 0),
@@ -64,7 +64,7 @@ CREATE TABLE clann_results_query_cluster (
 
 
 CREATE TABLE puffinn_results ( 
-	kb_per_point REAL NOT NULL, 
+	num_tables INTEGER NOT NULL, 
 	k INTEGER NOT NULL, 
 	delta REAL NOT NULL, 
 	dataset TEXT NOT NULL, 
@@ -73,19 +73,19 @@ CREATE TABLE puffinn_results (
 	total_time_ms INTEGER, 
 	queries_per_second REAL, 
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
-	PRIMARY KEY (kb_per_point, k, delta, dataset)
+	PRIMARY KEY (num_tables, k, delta, dataset)
 ); 
 
 CREATE TABLE puffinn_results_query (
-    kb_per_point REAL NOT NULL,
+    num_tables INTEGER NOT NULL,
     k INTEGER NOT NULL,
     delta REAL NOT NULL,
     dataset TEXT NOT NULL,
     query_idx INTEGER NOT NULL,
     query_time_ms INTEGER, 
     distance_computations INTEGER,
-    PRIMARY KEY (kb_per_point, k, delta, dataset, query_idx),
-    FOREIGN KEY (kb_per_point, k, delta, dataset) REFERENCES puffinn_results(kb_per_point, k, delta, dataset) ON DELETE CASCADE,
+    PRIMARY KEY (num_tables, k, delta, dataset, query_idx),
+    FOREIGN KEY (num_tables, k, delta, dataset) REFERENCES puffinn_results(num_tables, k, delta, dataset) ON DELETE CASCADE,
     CONSTRAINT positive_time CHECK (query_time_ms >= 0),
     CONSTRAINT positive_computations CHECK (distance_computations >= 0)
 );

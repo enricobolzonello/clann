@@ -36,12 +36,12 @@ extern "C" {
     }
 
     // Create a new index
-    CPUFFINN* CPUFFINN_index_create(const char* dataset_type, int dataset_args, uint64_t memory_limit) {
+    CPUFFINN* CPUFFINN_index_create(const char* dataset_type, int dataset_args) {
 
         if (strcmp("angular", dataset_type) == 0) {
-            return reinterpret_cast<CPUFFINN*>(new puffinn::Index<puffinn::CosineSimilarity>(dataset_args, memory_limit));
+            return reinterpret_cast<CPUFFINN*>(new puffinn::Index<puffinn::CosineSimilarity>(dataset_args));
         }else if (strcmp("jaccard", dataset_type) == 0){
-            return reinterpret_cast<CPUFFINN*>(new puffinn::Index<puffinn::JaccardSimilarity>(dataset_args, memory_limit));
+            return reinterpret_cast<CPUFFINN*>(new puffinn::Index<puffinn::JaccardSimilarity>(dataset_args));
         }else{
             std::cerr << "Error: Unsupported dataset type '" << dataset_type << "'. Only 'angular' is supported." << std::endl;
             return nullptr;
@@ -50,13 +50,12 @@ extern "C" {
     }
 
     // Rebuild the index
-    int CPUFFINN_index_rebuild(CPUFFINN* index) {
+    uint64_t CPUFFINN_index_rebuild(CPUFFINN* index, unsigned int num_maps) {
         try{
             auto cpp_index = reinterpret_cast<puffinn::Index<puffinn::CosineSimilarity>*>(index);
-            cpp_index->rebuild();
-            return 0; // success
+            return cpp_index->rebuild(num_maps);
         } catch (...) {
-            return 1;
+            return 0;
         }
     }
 

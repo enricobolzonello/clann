@@ -38,11 +38,11 @@ pub fn compare_implementations_time(c: &mut Criterion) {
         let data = AngularData::new(data_raw.clone());
 
         // Initialize base PUFFINN index
-        let base_index = PuffinnIndex::new(&data, config.kb_per_point * data.num_points() * 1024).unwrap();
+        let (base_index, _memory) = PuffinnIndex::new(&data, config.num_tables * data.num_points() * 1024).unwrap();
 
         // Initialize clustered index
         let clann_config = Config {
-            kb_per_point: config.kb_per_point,
+            num_tables: config.num_tables,
             num_clusters_factor: config.num_clusters_factor,
             k: config.k,
             delta: config.delta,
@@ -52,10 +52,10 @@ pub fn compare_implementations_time(c: &mut Criterion) {
         build(&mut clustered_index).unwrap();
 
         let group_name = format!(
-            "config_{}_clusters_{}_mem_{}_dataset_{}",
+            "config_{}_clusters_{}_L_{}_dataset_{}",
             config_idx,
             config.num_clusters_factor,
-            config.kb_per_point,
+            config.num_tables,
             dataset_path.split('/').last().unwrap_or("unknown")
         );
 

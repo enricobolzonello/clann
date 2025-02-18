@@ -27,7 +27,7 @@ pub struct RunMetrics {
     config: Config,
     dataset_len: usize,
     greedy_clusters: usize,
-    memory_used_bytes: usize,
+    pub memory_used_bytes: usize,
     total_search_time_s: Duration,
     queries_per_second: f32,
     recall_mean: f32,
@@ -113,18 +113,18 @@ impl RunMetrics {
         }
     }
 
+    pub fn add_memory_used(&mut self, memory: usize) {
+        self.memory_used_bytes += memory;
+    }
+
     pub fn compute_run_statistics(
         &mut self,
         dataset_distances: &Array<f32, Ix2>,
         run_distances: &[Vec<f32>],
-        dataset_len: usize,
         total_search_time: &Duration,
     ) {
         // Recall
         (self.recall_mean, self.recall_std) = self.compute_recall(dataset_distances, run_distances);
-
-        // Memory used
-        self.memory_used_bytes = dataset_len * self.config.kb_per_point * 1024;
 
         // Search time
         self.total_search_time_s = *total_search_time;
@@ -200,7 +200,7 @@ impl RunMetrics {
         match conn.execute(
             "INSERT INTO clann_results (
                 num_clusters,
-                kb_per_point,
+                num_tables,
                 k,
                 delta,
                 dataset,
@@ -217,7 +217,7 @@ impl RunMetrics {
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 self.config.num_clusters_factor,
-                self.config.kb_per_point,
+                self.config.num_tables,
                 self.config.k,
                 self.config.delta,
                 self.config.dataset_name,
@@ -301,7 +301,7 @@ impl RunMetrics {
         conn.execute(
             "INSERT INTO clann_results_query (
                 num_clusters,
-                kb_per_point,
+                num_tables,
                 k,
                 delta,
                 dataset,
@@ -312,7 +312,7 @@ impl RunMetrics {
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 self.config.num_clusters_factor,
-                self.config.kb_per_point,
+                self.config.num_tables,
                 self.config.k,
                 self.config.delta,
                 self.config.dataset_name,
@@ -344,7 +344,7 @@ impl RunMetrics {
         conn.execute(
             "INSERT INTO clann_results_query_cluster (
                 num_clusters,
-                kb_per_point,
+                num_tables,
                 k,
                 delta,
                 dataset,
@@ -358,7 +358,7 @@ impl RunMetrics {
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 self.config.num_clusters_factor,
-                self.config.kb_per_point,
+                self.config.num_tables,
                 self.config.k,
                 self.config.delta,
                 self.config.dataset_name,

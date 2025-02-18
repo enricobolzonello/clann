@@ -15,11 +15,10 @@ unsafe extern "C" {
     pub fn CPUFFINN_index_create(
         dataset_type: *const cty::c_char,
         dataset_args: cty::c_int,
-        memory_limit: u64,
     ) -> *mut CPUFFINN;
 }
 unsafe extern "C" {
-    pub fn CPUFFINN_index_rebuild(index: *mut CPUFFINN) -> cty::c_int;
+    pub fn CPUFFINN_index_rebuild(index: *mut CPUFFINN, num_maps: cty::c_uint) -> u64;
 }
 unsafe extern "C" {
     pub fn CPUFFINN_index_insert_cosine(

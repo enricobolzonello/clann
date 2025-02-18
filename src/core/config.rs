@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Kb per point used by the index
-    pub kb_per_point: usize,
+    pub num_tables: usize,
 
     /// Factor that needs to be multiplied to sqrt(n)
     pub num_clusters_factor: f32,
@@ -22,7 +22,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self { 
-            kb_per_point: 1,   
+            num_tables: 1,   
             num_clusters_factor: 1.0,
             k: 10, 
             delta: 0.9,
@@ -33,14 +33,14 @@ impl Default for Config {
 
 impl Config {
     pub fn new(
-        kb_per_point: usize,
+        num_tables: usize,
         num_clusters_factor: f32,
         k: usize,
         delta: f32,
         dataset_name: &str,
     ) -> Self {
         Self{
-            kb_per_point,
+            num_tables,
             num_clusters_factor,
             k,
             delta,
@@ -58,7 +58,7 @@ mod tests {
         let config = Config::default();
         
         // Check default values
-        assert_eq!(config.kb_per_point, 1);
+        assert_eq!(config.num_tables, 1);
         assert_eq!(config.num_clusters_factor, 1.0);
     }
 
@@ -67,7 +67,7 @@ mod tests {
         let config = Config::new(2048, 10.0, 10, 0.9, "");
         
         // Check custom values
-        assert_eq!(config.kb_per_point, 2048);
+        assert_eq!(config.num_tables, 2048);
         assert_eq!(config.num_clusters_factor, 10.0);
     }
 
@@ -80,7 +80,7 @@ mod tests {
         let deserialized: Config = serde_json::from_str(&serialized).unwrap();
         
         // Assert the deserialized config matches the original
-        assert_eq!(config.kb_per_point, deserialized.kb_per_point);
+        assert_eq!(config.num_tables, deserialized.num_tables);
         assert_eq!(config.num_clusters_factor, deserialized.num_clusters_factor);
     }
 }

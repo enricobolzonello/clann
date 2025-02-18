@@ -29,11 +29,9 @@ const INDEX_DIR: &str = "./__index_cache__";
 const DB_PATH: &str = "./clann_results.sqlite3";
 
 fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>, queries: &Array<f32, Ix2>, ground_truth_distances: &Array<f32, Ix2>, config_idx: usize) -> Result<(), Box<dyn std::error::Error>> {
-    let n = data.num_points();
-
     let index_path = format!(
-        "{}/index_{}_k{:.2}_kb{}.h5",
-        INDEX_DIR, config.dataset_name, config.num_clusters_factor, config.kb_per_point
+        "{}/index_{}_k{:.2}_L{}.h5",
+        INDEX_DIR, config.dataset_name, config.num_clusters_factor, config.num_tables
     );
 
     let mut clustered_index = if fs::metadata(&index_path).is_ok() {
@@ -89,7 +87,6 @@ fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>
         MetricsGranularity::Query,
         &ground_truth_distances,
         &distances,
-        n,
         &total_search_time,
     )?;
 
@@ -101,9 +98,9 @@ fn run_benchmark_config_puffinn(config: &Config, data: &AngularData<OwnedRepr<f3
 
     info!("Creating PUFFINN index");
     // create index
-    let base_index = PuffinnIndex::new(data, config.kb_per_point * data.num_points() * 1024)
+    let (base_index, memory) = PuffinnIndex::new(data, config.num_tables)
         .expect("Failed to initialize PUFFINN index");
-    info!("PUFFINN index created");
+    info!("PUFFINN index created with memory {}", memory);
 
     let mut puffinn_counts = Vec::new();
     let mut query_times = Vec::new();
@@ -141,6 +138,7 @@ fn run_benchmark_config_puffinn(config: &Config, data: &AngularData<OwnedRepr<f3
         &conn,
         config,
         n,
+        memory,
         total_search_time,
         &puffinn_counts,
         &query_times,
@@ -153,20 +151,19 @@ fn save_puffinn_results(
     conn: &Connection,
     config: &Config,
     dataset_len: usize,
+    memory_used_bytes: usize,
     total_search_time: Duration,
     puffinn_counts: &[u32],
     query_times: &[Duration],
 ) -> Result<(), rusqlite::Error> {
-    let memory_used_bytes = config.kb_per_point * dataset_len * 1024;
-
     // Insert overall results
     conn.execute(
         "INSERT OR REPLACE INTO puffinn_results 
-        (kb_per_point, k, delta, dataset, dataset_len, memory_used_bytes, 
+        (num_tables, k, delta, dataset, dataset_len, memory_used_bytes, 
          total_time_ms, queries_per_second) 
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
-            config.kb_per_point,
+            config.num_tables,
             config.k,
             config.delta,
             config.dataset_name,
@@ -180,13 +177,13 @@ fn save_puffinn_results(
     // Insert per-query results
     let mut stmt = conn.prepare(
         "INSERT INTO puffinn_results_query 
-        (kb_per_point, k, delta, dataset, query_idx, query_time_ms, distance_computations) 
+        (num_tables, k, delta, dataset, query_idx, query_time_ms, distance_computations) 
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
     )?;
 
     for (idx, (count, query_time)) in puffinn_counts.iter().zip(query_times.iter()).enumerate() {
         stmt.execute(params![
-            config.kb_per_point,
+            config.num_tables,
             config.k,
             config.delta,
             config.dataset_name,

@@ -71,7 +71,6 @@ pub fn save_metrics<T>(
     granularity: MetricsGranularity,
     ground_truth_distances: &Array<f32, Ix2>,
     run_distances: &[Vec<f32>],
-    dataset_len: usize,
     total_search_time: &Duration,
 ) -> Result<()>
 where
@@ -83,7 +82,6 @@ where
         granularity,
         ground_truth_distances,
         run_distances,
-        dataset_len,
         total_search_time,
     )
 }
