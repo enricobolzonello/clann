@@ -164,7 +164,7 @@ where
                     idx,
                     center_idx,
                     radius,
-                    brute_force: assignment_indexes.len() < 100,
+                    brute_force: assignment_indexes.len() < 100 || assignment_indexes.len() < self.config.k,
                     assignment: assignment_indexes,
                 };
 
@@ -211,9 +211,8 @@ where
             );
 
             // Create Puffinn index
-            // TODO: i dont like the clone
             match PuffinnIndex::new(
-                &self.data.subset(cluster.assignment.clone()),
+                &self.data.subset(&cluster.assignment),
                 self.config.num_tables,
             ) {
                 Ok((puffinn_index, memory_used)) => {

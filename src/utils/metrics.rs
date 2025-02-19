@@ -21,14 +21,15 @@ pub struct QueryMetrics {
     pub cluster_distance_computations: Vec<usize>, // Distance computations per cluster
 }
 
+/// Metrics beginning with [BUILD] will not be collected if you load the database from file
 pub struct RunMetrics {
     pub queries: Vec<QueryMetrics>, // Query metrics for the current run
-    pub cluster_sizes: Vec<usize>,  // Sizes of the clusters
-    config: Config,
-    dataset_len: usize,
-    greedy_clusters: usize,
-    pub memory_used_bytes: usize,
-    total_search_time_s: Duration,
+    pub cluster_sizes: Vec<usize>,  // [BUILD] Sizes of the clusters
+    config: Config,     
+    dataset_len: usize,             
+    greedy_clusters: usize,         // [BUILD] Number of clusters to perform brute force 
+    pub memory_used_bytes: usize,   // [BUILD] Total memory used by the index
+    total_search_time_s: Duration,      
     queries_per_second: f32,
     recall_mean: f32,
     recall_std: f32,
@@ -171,6 +172,7 @@ impl RunMetrics {
         sorted_distances[count - 1] + epsilon
     }
 
+    /// Save the results to the specified sqlite database, with the given granularity
     pub fn save_to_sqlite(&self, connection: &mut Connection, granularity: MetricsGranularity) -> Result<(), rusqlite::Error> {
         // Start a transaction to ensure all inserts succeed or none do
         let tx = connection.transaction()?;
@@ -189,7 +191,6 @@ impl RunMetrics {
             }
         }
 
-        // Commit the transaction
         tx.commit()
     }
 
