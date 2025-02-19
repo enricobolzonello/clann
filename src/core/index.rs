@@ -164,7 +164,7 @@ where
                     idx,
                     center_idx,
                     radius,
-                    brute_force: false,
+                    brute_force: assignment_indexes.len() < 100,
                     assignment: assignment_indexes,
                 };
 
@@ -223,20 +223,11 @@ where
                     }
                 }
                 Err(e) => {
-                    if e.contains("insufficient memory") {
-                        cluster.brute_force = true;
-                        self.puffinn_indices.push(None);
-                        info!("Skipping cluster {}, will do brute force", cluster_idx);
-                        if let Some(metrics) = &mut self.metrics {
-                            metrics.add_greedy_cluster_count();
-                        }
-                    }else{
-                        error!(
-                            "Failed to create Puffinn index for cluster {}: {:?}",
-                            cluster_idx, e
-                        );
-                        return Err(ClusteredIndexError::PuffinnCreationError(e));
-                    }
+                    error!(
+                        "Failed to create Puffinn index for cluster {}: {:?}",
+                        cluster_idx, e
+                    );
+                    return Err(ClusteredIndexError::PuffinnCreationError(e));
                 }
             }
         }
@@ -337,7 +328,13 @@ where
                 };
 
                 // map puffinn result to the original dataset
-                let mapped_candidates: Vec<usize> = self.map_candidates(&candidates, cluster)?;
+                let mapped_candidates = match self.map_candidates(&candidates, cluster) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("Error on cluster {}", cluster_idx);
+                        return Err(e);
+                    },
+                };
 
                 let mut min_dist_cluster = f32::INFINITY;
                 let mut max_dist_cluster = f32::NEG_INFINITY;
