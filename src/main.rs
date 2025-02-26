@@ -38,6 +38,7 @@ fn main() {
     } else {
         info!("No saved index found, initializing a new one");
         let mut new_index = init_with_config(data, config).unwrap();
+        enable_run_metrics(&mut new_index).unwrap();
         build(&mut new_index).map_err(|e| eprintln!("Error: {}", e)).unwrap();
         serialize(&new_index, INDEX_DIR).unwrap();
         new_index

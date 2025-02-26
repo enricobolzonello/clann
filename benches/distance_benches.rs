@@ -40,6 +40,9 @@ fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>
     } else {
         info!("No saved index found, initializing a new one");
         let mut new_index = init_with_config(data, config.clone()).unwrap();
+        new_index
+            .enable_metrics()
+            .expect("Failed to enable metrics");
         build(&mut new_index)
             .map_err(|e| eprintln!("Error: {}", e))
             .unwrap();
