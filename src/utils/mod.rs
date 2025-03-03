@@ -8,14 +8,13 @@ use ndarray::{Array, Ix1, Ix2};
 
 pub mod metrics;
 
-pub use metrics::MetricsGranularity;
-pub use metrics::QueryMetrics;
-pub use metrics::RunMetrics;
 use rand::thread_rng;
 use rand::Rng;
 
 use crate::metricdata::{MetricData, Subset};
 use crate::puffinn_binds::IndexableSimilarity;
+
+pub use metrics::{RunMetrics, MetricsOutput, QueryMetrics, MetricsGranularity};
 
 pub fn load_hdf5_dataset(filepath: &str) -> Result<(Array<f32, Ix2>, Array<f32, Ix2>, Array<f32, Ix2>), String> {
     let file = File::open(filepath).map_err(|e| format!("Error opening file '{}': {}", filepath, e))?;

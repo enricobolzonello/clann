@@ -57,14 +57,6 @@ where
     index.search(query)
 }
 
-pub fn enable_run_metrics<T>(index: &mut ClusteredIndex<T>) -> Result<()>
-where
-    T: MetricData + IndexableSimilarity<T> + Subset,
-    <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
-{
-    index.enable_metrics()
-}
-
 pub fn save_metrics<T>(
     index: &mut ClusteredIndex<T>,
     output_path: &str,

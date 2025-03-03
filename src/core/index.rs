@@ -17,19 +17,20 @@ use crate::puffinn_binds::get_distance_computations;
 use crate::puffinn_binds::puffinn_index::clear_distance_computations;
 use crate::puffinn_binds::IndexableSimilarity;
 use crate::puffinn_binds::PuffinnIndex;
-use crate::utils::db_exists;
+use crate::utils::{db_exists, MetricsOutput};
 use crate::utils::{MetricsGranularity, RunMetrics};
 
 use super::gmm::greedy_minimum_maximum;
 use super::heap::TopKClosestHeap;
 
 #[derive(Debug,Clone, Serialize, Deserialize)]
-struct ClusterCenter {
+pub struct ClusterCenter {
     pub idx: usize, // index of the cluster, corresponds to the index of the vec of puffinn indexes
     pub center_idx: usize, // index of the center point in the original dataset
     pub radius: f32, // radius of the cluster
     pub assignment: Vec<usize>, // vector of indices to the original dataset for points assigned to this cluster
     pub brute_force: bool, // flag indicating if brute force is applied instead of puffinn (<500 points)
+    pub memory_used: usize
 }
 
 pub struct ClusteredIndex<T>
@@ -61,19 +62,21 @@ where
         if data.num_points() == 0 {
             return Err(ClusteredIndexError::DataError("empty dataset".to_string()));
         }
-
+    
         info!("Initializing Index with config {:?}", config);
-
+    
         let k = ((config.num_clusters_factor as f64 * (data.num_points() as f64).sqrt()).floor() as usize).max(1);
-
+        let metrics = matches!(config.metrics_output, MetricsOutput::None)
+            .then(|| RunMetrics::new(config.clone(), data.num_points()));
+    
         Ok(ClusteredIndex {
             data,
             clusters: Vec::with_capacity(k),
             config,
             puffinn_indices: Vec::with_capacity(k),
-            metrics: None,
+            metrics,
         })
-    }
+    }    
 
     pub fn new_from_file(data: T, file_path: &str) -> Result<Self> {
         if !Path::new(file_path).exists() {
@@ -98,6 +101,9 @@ where
             .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
         let config: Config = serde_json::from_str(config_ascii.as_str())
             .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+
+        let metrics = matches!(config.metrics_output, MetricsOutput::None)
+            .then(|| RunMetrics::new(config.clone(), data.num_points()));
         
         // read cluster centers
         let cluster_dataset = root
@@ -129,7 +135,7 @@ where
             clusters,
             config,
             puffinn_indices,
-            metrics: None,
+            metrics,
         })
     }
 
@@ -166,6 +172,7 @@ where
                     radius,
                     brute_force: assignment_indexes.len() < 100 || assignment_indexes.len() < self.config.k,
                     assignment: assignment_indexes,
+                    memory_used: 0,
                 };
 
                 trace!(
@@ -199,8 +206,9 @@ where
                 continue;
             }
 
-            if let Some(metrics) = &mut self.metrics {
-                metrics.log_cluster_size(cluster.assignment.len());
+            if cluster.brute_force {
+                info!("Skipping cluster {} with {} points: doing brute force", cluster.idx, cluster.assignment.len());
+                continue;
             }
 
             debug!(
@@ -217,9 +225,7 @@ where
             ) {
                 Ok((puffinn_index, memory_used)) => {
                     self.puffinn_indices.push(Some(puffinn_index));
-                    if let Some(metrics) = &mut self.metrics {
-                        metrics.add_memory_used(memory_used);
-                    }
+                    cluster.memory_used = memory_used;
                 }
                 Err(e) => {
                     error!(
@@ -237,8 +243,9 @@ where
             "Build process completed. Total clusters: {}, Indexing time: {:.2?}",
             total_clusters, indexing_duration
         );
+        
         if let Some(metrics) = &mut self.metrics {
-            info!("Memory used: {}", metrics.memory_used_bytes)
+            metrics.log_index_building_time(indexing_duration);
         }
 
         Ok(())
@@ -372,13 +379,6 @@ where
         Ok(priority_queue.to_list())
     }
 
-    /// Enables run metrics collection
-    pub fn enable_metrics(&mut self) -> Result<()> {
-        self.metrics = Some(RunMetrics::new(self.config.clone(), self.data.num_points()));
-
-        Ok(())
-    }
-
     /// Saves metrics to the specified sqlite3 database with the desired granularity. For example, if you select [`MetricsGranularity::Run`] only metrics for the whole run, like recall or total search time, are saved.
     ///
     /// # Parameters
@@ -407,15 +407,15 @@ where
         match conn_res {
             Ok(mut conn) => {
                 if let Some(metrics) = &mut self.metrics {
-                    metrics.compute_run_statistics(
-                        ground_truth_distances,
-                        run_distances,
-                        total_search_time,
-                    );
-
                     return metrics
-                        .save_to_sqlite(&mut conn, granularity)
-                        .map_err(|e| ClusteredIndexError::ResultDBError(e.to_string()));
+                        .save_metrics(
+                            &mut conn, 
+                            granularity, 
+                            &self.clusters,
+                            ground_truth_distances,
+                            run_distances,
+                            total_search_time
+                        );
                 } else {
                     warn!("Metrics not enabled!");
                 }
@@ -585,6 +585,7 @@ where
                     radius: 0.0,
                     assignment: vec![],
                     brute_force: false,
+                    memory_used: 0,
                 });
             }
 

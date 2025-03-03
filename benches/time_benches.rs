@@ -47,6 +47,7 @@ pub fn compare_implementations_time(c: &mut Criterion) {
             k: config.k,
             delta: config.delta,
             dataset_name: config.dataset_name.clone(),
+            metrics_output: clann::utils::MetricsOutput::DB,
         };
         let mut clustered_index = init_with_config(data, clann_config).unwrap();
         build(&mut clustered_index).unwrap();

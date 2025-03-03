@@ -1,6 +1,6 @@
 use std::{env, fs, time::{Duration, Instant}};
 
-use clann::{build, core::Config, enable_run_metrics, init_from_file, init_with_config, metricdata::AngularData, save_metrics, search, serialize, utils::{load_hdf5_dataset, MetricsGranularity}};
+use clann::{build, core::Config, init_from_file, init_with_config, metricdata::AngularData, save_metrics, search, serialize, utils::{load_hdf5_dataset, MetricsGranularity, MetricsOutput}};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 
@@ -25,6 +25,7 @@ fn main() {
         k: 10,
         delta: 0.9,
         dataset_name: "glove-25-angular".to_owned(),
+        metrics_output: MetricsOutput::DB,
     };
 
     let index_path = format!(
@@ -38,13 +39,10 @@ fn main() {
     } else {
         info!("No saved index found, initializing a new one");
         let mut new_index = init_with_config(data, config).unwrap();
-        enable_run_metrics(&mut new_index).unwrap();
         build(&mut new_index).map_err(|e| eprintln!("Error: {}", e)).unwrap();
         serialize(&new_index, INDEX_DIR).unwrap();
         new_index
     };
-
-    enable_run_metrics(&mut index).unwrap();
 
     info!("Processing {} queries", queries.nrows());
     let mut distance_results = Vec::with_capacity(queries.nrows());
