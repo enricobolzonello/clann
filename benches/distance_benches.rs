@@ -81,7 +81,7 @@ fn run_benchmark_config_clann(config: &Config, data: AngularData<OwnedRepr<f32>>
         &mut clustered_index,
         DB_PATH,
         MetricsGranularity::Query,
-        &ground_truth_distances,
+        ground_truth_distances,
         &distances,
         &total_search_time,
     )?;
@@ -200,15 +200,15 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
 
     for (config_idx, config) in configs.iter().enumerate() {
         let dataset_path = format!("./datasets/{}.hdf5", config.dataset_name);
-        let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset(&dataset_path)?;
+        let hdf5_dataset = load_hdf5_dataset(&dataset_path)?;
 
-        let data = AngularData::new(data_raw);
+        let data = AngularData::new(hdf5_dataset.dataset_array);
 
         // run clann
         match check_configuration_exists_clann(&conn, config, git_hash) {
             Ok(false) => {
                 // Run benchmark, catching any errors for this specific configuration
-                match run_benchmark_config_clann(config, data.clone(), &queries, &ground_truth_distances, config_idx) {
+                match run_benchmark_config_clann(config, data.clone(), &hdf5_dataset.dataset_queries, &hdf5_dataset.ground_truth_distances, config_idx) {
                     Ok(_) => {
                         info!("CLANN config {} run", config_idx);
                     }
@@ -234,7 +234,7 @@ pub fn compare_implementations_distance() -> Result<(), Box<dyn std::error::Erro
         match check_configuration_exists_puffinn(&conn, config) {
             Ok(false) => {
                 // run puffinn
-                match run_benchmark_config_puffinn(config, &data, &queries, config_idx) {
+                match run_benchmark_config_puffinn(config, &data, &hdf5_dataset.dataset_queries, config_idx) {
                     Ok(_) => {
                         info!("PUFFINN config {} run", config_idx);
                     }

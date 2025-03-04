@@ -58,6 +58,12 @@ impl QueryMetrics {
     }
 }
 
+impl Default for QueryMetrics {
+    fn default() -> Self {
+        Self::new()
+    }      
+}
+
 impl RunMetrics {
     pub fn new(config: Config, dataset_len: usize) -> Self {
         Self {

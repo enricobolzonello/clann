@@ -16,8 +16,8 @@ fn main() {
     const DB_PATH: &str = "./clann_results.sqlite3";
     const INDEX_DIR: &str = "./__index_cache__";
 
-    let (data_raw, queries, ground_truth_distances) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
-    let data = AngularData::new(data_raw);
+    let hdf5_dataset = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
+    let data = AngularData::new(hdf5_dataset.dataset_array);
 
     let config = Config{
         num_tables: 50,
@@ -44,10 +44,10 @@ fn main() {
         new_index
     };
 
-    info!("Processing {} queries", queries.nrows());
-    let mut distance_results = Vec::with_capacity(queries.nrows());
+    info!("Processing {} queries", hdf5_dataset.dataset_queries.nrows());
+    let mut distance_results = Vec::with_capacity(hdf5_dataset.dataset_queries.nrows());
     
-    let progress_bar = ProgressBar::new(queries.nrows() as u64);
+    let progress_bar = ProgressBar::new(hdf5_dataset.dataset_queries.nrows() as u64);
     progress_bar.set_style(ProgressStyle::default_bar()
         .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
         .expect("Failed to set progress bar style")
@@ -58,7 +58,7 @@ fn main() {
     let mut max_search_time = Duration::from_secs(0);
     let mut total_search_time = Duration::from_secs(0);
 
-    for (i, query) in queries.rows().into_iter().enumerate() {
+    for (i, query) in hdf5_dataset.dataset_queries.rows().into_iter().enumerate() {
         let query_start = Instant::now();
         let result = search(&mut index, query.as_slice().unwrap()).unwrap();
         let query_time = query_start.elapsed();
@@ -98,7 +98,7 @@ fn main() {
         save_metrics(&mut index, 
             DB_PATH,
             MetricsGranularity::Cluster,
-            &ground_truth_distances,
+            &hdf5_dataset.ground_truth_distances,
             &distance_results,
             &total_search_time
         ).unwrap();

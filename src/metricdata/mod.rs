@@ -14,7 +14,7 @@ pub trait MetricData {
 
 pub trait Subset {
     type Out: MetricData;
-    fn subset(&self, indices: &Vec<usize>) -> Self::Out;
+    fn subset(&self, indices: &[usize]) -> Self::Out;
 }
 
 pub use self::euclideandata::EuclideanData;

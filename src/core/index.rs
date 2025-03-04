@@ -427,7 +427,7 @@ where
     }
 
     pub fn serialize(&self, directory: &str) -> Result<()> {
-        if !fs::metadata(directory).is_ok() {
+        if fs::metadata(directory).is_err() {
             return Err(ClusteredIndexError::SerializeError(format!(
                 "directory {} doesn't exist",
                 directory
@@ -467,7 +467,7 @@ where
             if let Some(index) = puffinn_index {
                 index
                     .save_to_file(&file_path, index_id)
-                    .map_err(|e| ClusteredIndexError::SerializeError(e))?;
+                    .map_err(ClusteredIndexError::SerializeError)?;
             }
         }
 

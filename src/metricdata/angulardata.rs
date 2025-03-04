@@ -57,7 +57,7 @@ impl<S: Data<Elem = f32> + ndarray::RawDataClone> MetricData for AngularData<S> 
 
 impl<S: Data<Elem = f32> + ndarray::RawDataClone> Subset for AngularData<S> {
     type Out = AngularData<OwnedRepr<f32>>;
-    fn subset(&self, indices: &Vec<usize>) -> Self::Out {
+    fn subset(&self, indices: &[usize]) -> Self::Out {
         AngularData::new(self.data.select(Axis(0), indices))
     }
 }

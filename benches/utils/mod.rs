@@ -15,9 +15,9 @@ pub fn load_configs_from_file(path: &str) -> io::Result<Vec<Config>> {
 
 
 pub fn print_benchmark_header(name: &str) {
-    println!("\n{}", "╔═══════════════════════════════════════════════════════════════╗");
+    println!("\n╔═══════════════════════════════════════════════════════════════╗");
     println!("║ {:<61} ║", format!("{}", name));
-    println!("{}", "╚═══════════════════════════════════════════════════════════════╝");
+    println!("╚═══════════════════════════════════════════════════════════════╝");
 }
 
 pub fn create_progress_bar(name: String, total: u64) -> ProgressBar {

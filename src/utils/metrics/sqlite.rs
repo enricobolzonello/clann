@@ -164,7 +164,7 @@ pub fn sqlite_insert_clann_results(
 
 pub fn sqlite_insert_queries_only(
     conn: &Connection,
-    queries: &Vec<QueryMetrics>,
+    queries: &[QueryMetrics],
     num_clusters_factor: f32,
     num_tables: usize,
     k: usize,
@@ -207,7 +207,7 @@ pub fn sqlite_insert_queries_only(
 
 pub fn sqlite_insert_clann_results_query(
     conn: &Connection,
-    queries: &Vec<QueryMetrics>,
+    queries: &[QueryMetrics],
     num_clusters_factor: f32,
     num_tables: usize,
     k: usize,
