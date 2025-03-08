@@ -1,4 +1,4 @@
-pub fn csv_build_metrics(
+pub(crate) fn csv_build_metrics(
     &self, 
     file_path: &str,
     num_clusters: usize,

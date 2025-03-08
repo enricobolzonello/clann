@@ -1,5 +1,5 @@
-pub mod euclideandata;
-pub mod angulardata;
+pub(crate) mod euclideandata;
+pub(crate) mod angulardata;
 
 pub trait MetricData {
     type DataType;

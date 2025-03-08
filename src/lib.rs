@@ -4,13 +4,12 @@
 //! This approach, even though requires more memory and index building time, effectively cuts the hit distribution for the LSH function, ensuring that points that are far apart cannot collide. In classic LSH scenarios, it has been observed long tails of hits, due to the probabilistic nature of the function. Even though far points have low probability of colliding it was still not null, and the problem accentuated with queries far away from the dataset, where it approximates to a brute-force approach.
 //!
 
-use core::{index::ClusteredIndex, Config, Result};
+use core::{config::MetricsGranularity, index::ClusteredIndex, Config, Result};
 use std::time::Duration;
 
 use metricdata::{MetricData, Subset};
 use ndarray::{Array, Ix2};
 use puffinn_binds::IndexableSimilarity;
-use utils::MetricsGranularity;
 
 pub mod core;
 pub mod metricdata;

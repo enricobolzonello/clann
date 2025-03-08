@@ -2,25 +2,25 @@ use std::collections::BinaryHeap;
 use ordered_float::OrderedFloat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Element {
-    pub distance: OrderedFloat<f32>,
-    pub point_index: usize,
+pub(crate) struct Element {
+    pub(crate) distance: OrderedFloat<f32>,
+    pub(crate) point_index: usize,
 }
 
-pub struct TopKClosestHeap {
+pub(crate) struct TopKClosestHeap {
     heap: BinaryHeap<Element>, 
     length: usize,
 }
 
 impl TopKClosestHeap {
-    pub fn new(top_n: usize) -> Self {
+    pub(crate) fn new(top_n: usize) -> Self {
         TopKClosestHeap {
             heap: BinaryHeap::with_capacity(top_n),
             length: top_n,
         }
     }
 
-    pub fn add(&mut self, element: Element) -> bool {
+    pub(crate) fn add(&mut self, element: Element) -> bool {
         if self.heap.len() < self.length {
             self.heap.push(element);
         } else if let Some(max) = self.heap.peek() {
@@ -35,11 +35,11 @@ impl TopKClosestHeap {
         true
     }
 
-    pub fn get_top(&self) -> Option<(usize, f32)> {
+    pub(crate) fn get_top(&self) -> Option<(usize, f32)> {
         self.heap.peek().map(|e| (e.point_index, e.distance.0))
     }
 
-    pub fn to_list(&self) -> Vec<(f32, usize)> {
+    pub(crate) fn to_list(&self) -> Vec<(f32, usize)> {
         let mut elements: Vec<_> = self.heap.iter()
             .map(|e| (e.distance.into_inner(), e.point_index))
             .collect();

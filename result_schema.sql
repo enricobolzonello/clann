@@ -13,7 +13,7 @@ CREATE TABLE build_metrics (
 	PRIMARY KEY (num_clusters, num_tables, dataset, git_commit_hash), 
 	CONSTRAINT positive_clusters CHECK (num_clusters > 0), 
 	CONSTRAINT positive_L CHECK (num_tables > 0) 
-)
+);
 
 CREATE TABLE build_metrics_cluster (
 	num_clusters INTEGER NOT NULL, 
@@ -27,8 +27,8 @@ CREATE TABLE build_metrics_cluster (
 	num_points INTEGER,
 	memory_used_bytes INTEGER,
 	PRIMARY KEY (num_clusters, num_tables, dataset, git_commit_hash, cluster_idx), 
-	FOREIGN KEY (num_clusters, num_tables, dataset, git_commit_hash) REFERENCES build_metrics(num_clusters, num_tables, dataset, git_commit_hash) ON DELETE CASCADE, 
-)
+	FOREIGN KEY (num_clusters, num_tables, dataset, git_commit_hash) REFERENCES build_metrics(num_clusters, num_tables, dataset, git_commit_hash) ON DELETE CASCADE
+);
 
 -- Search time metrics for all the queries
 CREATE TABLE search_metrics ( 
@@ -86,7 +86,6 @@ CREATE TABLE search_metrics_cluster (
 	FOREIGN KEY (num_clusters, num_tables, k, delta, dataset, git_commit_hash, query_idx) REFERENCES search_metrics_query(num_clusters, num_tables, k, delta, dataset, git_commit_hash, query_idx) ON DELETE CASCADE, 
 	CONSTRAINT positive_candidates CHECK (n_candidates >= 0), 
 	CONSTRAINT positive_cluster_time CHECK (cluster_time_ms >= 0),
-	CONSTRAINT positive_cluster_size CHECK (cluster_size >= 0),
 	CONSTRAINT positive_cluster_computations CHECK (cluster_distance_computations >= 0) 
 );
 
@@ -105,7 +104,7 @@ CREATE TABLE puffinn_results (
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
 	PRIMARY KEY (num_tables, k, delta, dataset),
 	CONSTRAINT valid_recall CHECK (recall_mean >= 0 AND recall_mean <= 1), 
-	CONSTRAINT valid_recall_std CHECK (recall_std >= 0), 
+	CONSTRAINT valid_recall_std CHECK (recall_std >= 0)
 ); 
 
 CREATE TABLE puffinn_results_query (

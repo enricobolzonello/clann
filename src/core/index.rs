@@ -4,12 +4,13 @@ use std::time::{Duration, Instant};
 
 use hdf5::types::{VarLenAscii, VarLenUnicode};
 use hdf5::File;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use ndarray::{Array, Ix2};
 use ordered_float::OrderedFloat;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+use crate::core::config::MetricsOutput;
 use crate::core::heap::Element;
 use crate::core::{ClusteredIndexError, Config, Result};
 use crate::metricdata::{MetricData, Subset};
@@ -17,20 +18,20 @@ use crate::puffinn_binds::get_distance_computations;
 use crate::puffinn_binds::puffinn_index::clear_distance_computations;
 use crate::puffinn_binds::IndexableSimilarity;
 use crate::puffinn_binds::PuffinnIndex;
-use crate::utils::{db_exists, MetricsOutput};
-use crate::utils::{MetricsGranularity, RunMetrics};
+use crate::utils::{db_exists, RunMetrics};
 
+use super::config::MetricsGranularity;
 use super::gmm::greedy_minimum_maximum;
 use super::heap::TopKClosestHeap;
 
 #[derive(Debug,Clone, Serialize, Deserialize)]
-pub struct ClusterCenter {
-    pub idx: usize, // index of the cluster, corresponds to the index of the vec of puffinn indexes
-    pub center_idx: usize, // index of the center point in the original dataset
-    pub radius: f32, // radius of the cluster
-    pub assignment: Vec<usize>, // vector of indices to the original dataset for points assigned to this cluster
-    pub brute_force: bool, // flag indicating if brute force is applied instead of puffinn (<500 points)
-    pub memory_used: usize
+pub(crate) struct ClusterCenter {
+    pub(crate) idx: usize, // index of the cluster, corresponds to the index of the vec of puffinn indexes
+    pub(crate) center_idx: usize, // index of the center point in the original dataset
+    pub(crate) radius: f32, // radius of the cluster
+    pub(crate) assignment: Vec<usize>, // vector of indices to the original dataset for points assigned to this cluster
+    pub(crate) brute_force: bool, // flag indicating if brute force is applied instead of puffinn (<500 points)
+    pub(crate) memory_used: usize
 }
 
 pub struct ClusteredIndex<T>
@@ -42,7 +43,7 @@ where
     clusters: Vec<ClusterCenter>,
     config: Config,
     puffinn_indices: Vec<Option<PuffinnIndex>>,
-    pub metrics: Option<RunMetrics>,
+    pub(crate) metrics: Option<RunMetrics>,
 }
 
 impl<T> ClusteredIndex<T>
@@ -58,7 +59,7 @@ where
     ///
     /// # Errors
     /// Returns a `ClusteredIndexError::ConfigError` if the configuration is invalid.
-    pub fn new(config: Config, data: T) -> Result<Self> {
+    pub(crate) fn new(config: Config, data: T) -> Result<Self> {
         if data.num_points() == 0 {
             return Err(ClusteredIndexError::DataError("empty dataset".to_string()));
         }
@@ -66,7 +67,7 @@ where
         info!("Initializing Index with config {:?}", config);
     
         let k = ((config.num_clusters_factor as f64 * (data.num_points() as f64).sqrt()).floor() as usize).max(1);
-        let metrics = matches!(config.metrics_output, MetricsOutput::None)
+        let metrics = matches!(config.metrics_output, MetricsOutput::DB)
             .then(|| RunMetrics::new(config.clone(), data.num_points()));
     
         Ok(ClusteredIndex {
@@ -78,7 +79,7 @@ where
         })
     }    
 
-    pub fn new_from_file(data: T, file_path: &str) -> Result<Self> {
+    pub(crate) fn new_from_file(data: T, file_path: &str) -> Result<Self> {
         if !Path::new(file_path).exists() {
             return Err(ClusteredIndexError::ConfigError(format!(
                 "file {} not found",
@@ -101,9 +102,6 @@ where
             .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
         let config: Config = serde_json::from_str(config_ascii.as_str())
             .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
-
-        let metrics = matches!(config.metrics_output, MetricsOutput::None)
-            .then(|| RunMetrics::new(config.clone(), data.num_points()));
         
         // read cluster centers
         let cluster_dataset = root
@@ -135,7 +133,7 @@ where
             clusters,
             config,
             puffinn_indices,
-            metrics,
+            metrics: None,
         })
     }
 
@@ -143,7 +141,7 @@ where
     ///
     /// # Errors
     /// Returns a `ClusteredIndexError::PuffinnCreationError` if there are any errors in one of the PUFFINN index creation
-    pub fn build(&mut self) -> Result<()> {
+    pub(crate) fn build(&mut self) -> Result<()> {
         let total_clusters = self.clusters.capacity();
         info!("Starting build process with {} clusters", total_clusters);
 
@@ -189,6 +187,7 @@ where
 
         // 2) CREATE PUFFINN INDEXES
         info!("Creating Puffinn indexes...");
+        self.puffinn_indices = vec![None; self.clusters.len()];
         for (cluster_idx, cluster) in self.clusters.iter_mut().enumerate() {
             
             // Progress logging
@@ -224,7 +223,7 @@ where
                 self.config.num_tables,
             ) {
                 Ok((puffinn_index, memory_used)) => {
-                    self.puffinn_indices.push(Some(puffinn_index));
+                    self.puffinn_indices[cluster_idx] = Some(puffinn_index);
                     cluster.memory_used = memory_used;
                 }
                 Err(e) => {
@@ -255,7 +254,7 @@ where
     ///
     /// # Parameters
     /// - `query`: A vector of the same type of the dataset representing the query point.
-    pub fn search(&mut self, query: &[T::DataType]) -> Result<Vec<(f32, usize)>> {
+    pub(crate) fn search(&mut self, query: &[T::DataType]) -> Result<Vec<(f32, usize)>> {
         if let Some(metrics) = &mut self.metrics {
             metrics.new_query();
             clear_distance_computations();
@@ -265,6 +264,7 @@ where
             "Starting search procedure with parameters k={} and delta={:.2}",
             self.config.k, self.config.delta
         );
+        let query_time = Instant::now();
 
         let delta_prime = self.config.delta;
 
@@ -376,6 +376,10 @@ where
             }
         }
 
+        if let Some(metrics) = &mut self.metrics {
+            metrics.log_query_time(query_time.elapsed());
+        }
+
         Ok(priority_queue.to_list())
     }
 
@@ -388,7 +392,7 @@ where
     /// - `run_distances`: Final distances returned by the search algorithm for all queries
     /// - `dataset_len`: Length of the train dataset
     /// - `total_search_time`: Search time for all queries
-    pub fn save_metrics(
+    pub(crate) fn save_metrics(
         &mut self,
         db_path: String,
         granularity: MetricsGranularity,
@@ -397,7 +401,7 @@ where
         total_search_time: &Duration,
     ) -> Result<()> {
         if !db_exists(&db_path) {
-            eprintln!("No existing database in path {}", db_path);
+            return Err(ClusteredIndexError::MetricsError(format!("No existing database in path {}", db_path)));
         }
 
         // Connect to the database
@@ -417,16 +421,14 @@ where
                             total_search_time
                         );
                 } else {
-                    warn!("Metrics not enabled!");
+                    return Err(ClusteredIndexError::MetricsError("run metrics are not enabled".to_string()));
                 }
             }
             Err(e) => return Err(e),
         }
-
-        Ok(())
     }
 
-    pub fn serialize(&self, directory: &str) -> Result<()> {
+    pub(crate) fn serialize(&self, directory: &str) -> Result<()> {
         if fs::metadata(directory).is_err() {
             return Err(ClusteredIndexError::SerializeError(format!(
                 "directory {} doesn't exist",
@@ -472,6 +474,14 @@ where
         }
 
         Ok(())
+    }
+
+    pub fn get_distance_computations(&self) -> Result<usize> {
+        if let Some(metrics) = &self.metrics {
+            return Ok(metrics.current_query().unwrap().distance_computations);
+        }
+
+        Err(ClusteredIndexError::MetricsError("run metrics are not enabled".to_string()))
     }
 
     /// Helper to sort clusters in ascending order by distance from the query point

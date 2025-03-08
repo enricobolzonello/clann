@@ -1,40 +1,27 @@
 use ndarray::{Array, Ix2};
 use rusqlite::Connection;
-use serde::{Deserialize, Serialize};
 use sqlite::{
     sqlite_build_metrics, sqlite_insert_clann_results, sqlite_insert_clann_results_query,
     sqlite_insert_queries_only,
 };
 use std::time::Duration;
 
-use crate::core::{index::ClusterCenter, ClusteredIndexError, Config};
+use crate::core::{config::{MetricsGranularity, MetricsOutput}, index::ClusterCenter, ClusteredIndexError, Config};
 
 use super::get_recall_values;
 mod sqlite;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MetricsOutput{
-    DB,
-    None
+pub(crate) struct QueryMetrics {
+    pub(crate) distance_computations: usize, // Global distance computations
+    pub(crate) query_time: Duration,
+    pub(crate) cluster_n_candidates: Vec<usize>, // Number of candidates per cluster
+    pub(crate) cluster_timings: Vec<Duration>,   // Timing for each cluster
+    pub(crate) cluster_distance_computations: Vec<usize>, // Distance computations per cluster
 }
 
-pub enum MetricsGranularity {
-    Run,     // Only overall run metrics
-    Query,   // Run + per-query metrics
-    Cluster, // Run + per-query + per-cluster metrics
-}
-
-pub struct QueryMetrics {
-    pub distance_computations: usize, // Global distance computations
-    pub query_time: Duration,
-    pub cluster_n_candidates: Vec<usize>, // Number of candidates per cluster
-    pub cluster_timings: Vec<Duration>,   // Timing for each cluster
-    pub cluster_distance_computations: Vec<usize>, // Distance computations per cluster
-}
-
-pub struct RunMetrics {
+pub(crate) struct RunMetrics {
     // search metrics
-    pub queries: Vec<QueryMetrics>,
+    pub(crate) queries: Vec<QueryMetrics>,
     config: Config,
     dataset_len: usize,
     total_search_time_s: Duration,
@@ -47,7 +34,7 @@ pub struct RunMetrics {
 }
 
 impl QueryMetrics {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             distance_computations: 0,
             query_time: Duration::default(),
@@ -65,7 +52,7 @@ impl Default for QueryMetrics {
 }
 
 impl RunMetrics {
-    pub fn new(config: Config, dataset_len: usize) -> Self {
+    pub(crate) fn new(config: Config, dataset_len: usize) -> Self {
         Self {
             queries: Vec::new(),
             config,
@@ -78,47 +65,47 @@ impl RunMetrics {
         }
     }
 
-    pub fn new_query(&mut self) {
+    pub(crate) fn new_query(&mut self) {
         self.queries.push(QueryMetrics::new());
     }
 
-    pub fn current_query_mut(&mut self) -> Option<&mut QueryMetrics> {
+    pub(crate) fn current_query_mut(&mut self) -> Option<&mut QueryMetrics> {
         self.queries.last_mut()
     }
 
-    pub fn current_query(&self) -> Option<&QueryMetrics> {
+    pub(crate) fn current_query(&self) -> Option<&QueryMetrics> {
         self.queries.iter().last()
     }
 
-    pub fn log_index_building_time(&mut self, time: Duration) {
+    pub(crate) fn log_index_building_time(&mut self, time: Duration) {
         self.indexing_duration = time;
     }
 
-    pub fn log_n_candidates(&mut self, n_candidates: usize) {
+    pub(crate) fn log_n_candidates(&mut self, n_candidates: usize) {
         if let Some(query) = self.current_query_mut() {
             query.cluster_n_candidates.push(n_candidates);
         }
     }
 
-    pub fn log_cluster_time(&mut self, time: Duration) {
+    pub(crate) fn log_cluster_time(&mut self, time: Duration) {
         if let Some(query) = self.current_query_mut() {
             query.cluster_timings.push(time);
         }
     }
 
-    pub fn log_query_time(&mut self, time: Duration) {
+    pub(crate) fn log_query_time(&mut self, time: Duration) {
         if let Some(query) = self.current_query_mut() {
             query.query_time = time;
         }
     }
 
-    pub fn add_distance_computation_global(&mut self, n_comp: usize) {
+    pub(crate) fn add_distance_computation_global(&mut self, n_comp: usize) {
         if let Some(query) = self.current_query_mut() {
             query.distance_computations += n_comp;
         }
     }
 
-    pub fn add_distance_computation_cluster(&mut self, n_comp: usize) {
+    pub(crate) fn add_distance_computation_cluster(&mut self, n_comp: usize) {
         if let Some(query) = self.current_query_mut() {
             query.cluster_distance_computations.push(n_comp);
             query.distance_computations += n_comp;
@@ -126,7 +113,7 @@ impl RunMetrics {
     }
 
     /// Save the results to the specified sqlite database, with the given granularity
-    pub fn save_metrics(
+    pub(crate) fn save_metrics(
         &mut self,
         connection: &mut Connection,
         granularity: MetricsGranularity,

@@ -1,6 +1,16 @@
 use serde::{Deserialize, Serialize};
 
-use crate::utils::MetricsOutput;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MetricsOutput{
+    DB,
+    None
+}
+
+pub enum MetricsGranularity {
+    Run,     // Only overall run metrics
+    Query,   // Run + per-query metrics
+    Cluster, // Run + per-query + per-cluster metrics
+}
 
 /// Parameters for the index
 #[derive(Debug, Clone, Serialize, Deserialize)]

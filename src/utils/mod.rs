@@ -6,7 +6,7 @@ use log::debug;
 use ndarray::{Array, Ix1, Ix2};
 use ndarray::{Array2, Axis};
 
-pub mod metrics;
+pub(crate) mod metrics;
 
 use rand::thread_rng;
 use rand::Rng;
@@ -14,7 +14,7 @@ use rand::Rng;
 use crate::metricdata::{MetricData, Subset};
 use crate::puffinn_binds::IndexableSimilarity;
 
-pub use metrics::{MetricsGranularity, MetricsOutput, QueryMetrics, RunMetrics};
+pub(crate) use metrics::RunMetrics;
 
 pub struct Hdf5Dataset {
     pub dataset_array: Array<f32, Ix2>,
@@ -63,7 +63,7 @@ fn threshold(distances: &Array<f32, Ix1>, count: usize, epsilon: f32) -> f32 {
     sorted_distances[count - 1] + epsilon
 }
 
-pub fn get_recall_values(
+pub(crate) fn get_recall_values(
     dataset_distances: &Array<f32, Ix2>,
     run_distances: &[Vec<f32>],
     count: usize,
@@ -94,7 +94,7 @@ pub fn get_recall_values(
     (mean_recall, std_recall, recalls)
 }
 
-pub fn db_exists(db_file_path: &str) -> bool {
+pub(crate) fn db_exists(db_file_path: &str) -> bool {
     fs::metadata(db_file_path).is_ok()
 }
 

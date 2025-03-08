@@ -1,6 +1,6 @@
 use std::{env, fs, time::{Duration, Instant}};
 
-use clann::{build, core::Config, init_from_file, init_with_config, metricdata::AngularData, save_metrics, search, serialize, utils::{load_hdf5_dataset, MetricsGranularity, MetricsOutput}};
+use clann::{build, core::{Config, MetricsGranularity, MetricsOutput}, init_from_file, init_with_config, metricdata::AngularData, save_metrics, search, serialize, utils::load_hdf5_dataset};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 
@@ -13,19 +13,19 @@ fn main() {
     info!("Starting search benchmark");
     let total_start = Instant::now();
 
-    const DB_PATH: &str = "./clann_results.sqlite3";
+    const DB_PATH: &str = "./results_v2.sqlite3";
     const INDEX_DIR: &str = "./__index_cache__";
 
     let hdf5_dataset = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
     let data = AngularData::new(hdf5_dataset.dataset_array);
 
     let config = Config{
-        num_tables: 50,
+        num_tables: 84,
         num_clusters_factor: 0.4,
         k: 10,
         delta: 0.9,
         dataset_name: "glove-25-angular".to_owned(),
-        metrics_output: MetricsOutput::DB,
+        metrics_output: MetricsOutput::None,
     };
 
     let index_path = format!(

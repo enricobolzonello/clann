@@ -118,7 +118,7 @@ impl PuffinnIndex {
         }
     }
 
-    pub fn save_to_file(&self, file_path: &str, index_id: usize) -> Result<(), String> {
+    pub(crate) fn save_to_file(&self, file_path: &str, index_id: usize) -> Result<(), String> {
         let file_path_cstring = CString::new(file_path)
             .map_err(|_| format!("Failed to convert file name '{}' to CString", file_path))?;
 
@@ -134,7 +134,7 @@ pub fn get_distance_computations() -> u32 {
     unsafe { CPUFFINN_get_distance_computations() }
 }
 
-pub fn clear_distance_computations() {
+pub(crate) fn clear_distance_computations() {
     unsafe {
         CPUFFINN_clear_distance_computations();
     }

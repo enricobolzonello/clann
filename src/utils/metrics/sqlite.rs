@@ -7,7 +7,7 @@ use crate::core::index::ClusterCenter;
 
 use super::QueryMetrics;
 
-pub fn sqlite_build_metrics(
+pub(crate) fn sqlite_build_metrics(
     conn: &Connection,
     num_clusters_factor: f32,
     num_tables: usize,
@@ -105,7 +105,7 @@ pub fn sqlite_build_metrics(
     Ok(())
 }
 
-pub fn sqlite_insert_clann_results(
+pub(crate) fn sqlite_insert_clann_results(
     conn: &Connection,
     num_clusters_factor: f32,
     num_tables: usize,
@@ -162,7 +162,7 @@ pub fn sqlite_insert_clann_results(
     }
 }
 
-pub fn sqlite_insert_queries_only(
+pub(crate) fn sqlite_insert_queries_only(
     conn: &Connection,
     queries: &[QueryMetrics],
     num_clusters_factor: f32,
@@ -205,7 +205,7 @@ pub fn sqlite_insert_queries_only(
     Ok(())
 }
 
-pub fn sqlite_insert_clann_results_query(
+pub(crate) fn sqlite_insert_clann_results_query(
     conn: &Connection,
     queries: &[QueryMetrics],
     num_clusters_factor: f32,
