@@ -187,7 +187,7 @@ where
 
         // 2) CREATE PUFFINN INDEXES
         info!("Creating Puffinn indexes...");
-        self.puffinn_indices = vec![None; self.clusters.len()];
+        self.puffinn_indices = Vec::with_capacity(self.clusters.len());
         for (cluster_idx, cluster) in self.clusters.iter_mut().enumerate() {
             
             // Progress logging
@@ -207,6 +207,7 @@ where
 
             if cluster.brute_force {
                 info!("Skipping cluster {} with {} points: doing brute force", cluster.idx, cluster.assignment.len());
+                self.puffinn_indices.push(None);
                 continue;
             }
 
@@ -223,7 +224,7 @@ where
                 self.config.num_tables,
             ) {
                 Ok((puffinn_index, memory_used)) => {
-                    self.puffinn_indices[cluster_idx] = Some(puffinn_index);
+                    self.puffinn_indices.push(Some(puffinn_index));
                     cluster.memory_used = memory_used;
                 }
                 Err(e) => {
