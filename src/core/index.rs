@@ -24,14 +24,14 @@ use super::config::MetricsGranularity;
 use super::gmm::greedy_minimum_maximum;
 use super::heap::TopKClosestHeap;
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ClusterCenter {
     pub(crate) idx: usize, // index of the cluster, corresponds to the index of the vec of puffinn indexes
     pub(crate) center_idx: usize, // index of the center point in the original dataset
     pub(crate) radius: f32, // radius of the cluster
     pub(crate) assignment: Vec<usize>, // vector of indices to the original dataset for points assigned to this cluster
     pub(crate) brute_force: bool, // flag indicating if brute force is applied instead of puffinn (<500 points)
-    pub(crate) memory_used: usize
+    pub(crate) memory_used: usize, // memory used by the puffinn index
 }
 
 pub struct ClusteredIndex<T>
@@ -51,25 +51,36 @@ where
     T: MetricData + IndexableSimilarity<T> + Subset,
     <T as Subset>::Out: IndexableSimilarity<<T as Subset>::Out>,
 {
-    /// Creates a new Clustered Index.
+    /// Creates a new Clustered Index from scratch.
     ///
     /// # Parameters
-    /// - `config`: Configuration object specifying clustering and memory constraints.
-    /// - `data`: The dataset implementing `MetricData`, `Subset` and `IndexableSimilarity`.
+    /// - `config`: Configuration object specifying:
+    ///   - Number of tables for PUFFINN indices
+    ///   - Clustering factor (determines number of clusters as sqrt(n) * factor)
+    ///   - k nearest neighbors to search for
+    ///   - Target recall (delta)
+    ///   - Dataset name and metrics configuration
+    /// - `data`: The dataset implementing required traits for distance computation and subset operations
+    ///
+    /// # Returns
+    /// A new `ClusteredIndex` instance initialized with the given configuration but not yet built.
+    /// The index needs to be built using [`build()`] before it can be used for searching.
     ///
     /// # Errors
-    /// Returns a `ClusteredIndexError::ConfigError` if the configuration is invalid.
+    /// Returns `ClusteredIndexError::DataError` if the input dataset is empty
     pub(crate) fn new(config: Config, data: T) -> Result<Self> {
         if data.num_points() == 0 {
             return Err(ClusteredIndexError::DataError("empty dataset".to_string()));
         }
-    
+
         info!("Initializing Index with config {:?}", config);
-    
-        let k = ((config.num_clusters_factor as f64 * (data.num_points() as f64).sqrt()).floor() as usize).max(1);
+
+        let k = ((config.num_clusters_factor as f64 * (data.num_points() as f64).sqrt()).floor()
+            as usize)
+            .max(1);
         let metrics = matches!(config.metrics_output, MetricsOutput::DB)
             .then(|| RunMetrics::new(config.clone(), data.num_points()));
-    
+
         Ok(ClusteredIndex {
             data,
             clusters: Vec::with_capacity(k),
@@ -77,8 +88,22 @@ where
             puffinn_indices: Vec::with_capacity(k),
             metrics,
         })
-    }    
+    }
 
+    /// Creates a new Clustered Index by loading a previously serialized index from a file.
+    ///
+    /// # Parameters
+    /// - `data`: The dataset implementing required traits, must match the original dataset used to build the index
+    /// - `file_path`: Path to the HDF5 file containing the serialized index
+    ///
+    /// # Returns
+    /// A `ClusteredIndex` instance loaded from the file, ready to be used for searching
+    ///
+    /// # Errors
+    /// Returns `ClusteredIndexError::ConfigError` if:
+    /// - The file doesn't exist
+    /// - The file format is invalid
+    /// - The serialized data is corrupted or incompatible
     pub(crate) fn new_from_file(data: T, file_path: &str) -> Result<Self> {
         if !Path::new(file_path).exists() {
             return Err(ClusteredIndexError::ConfigError(format!(
@@ -104,7 +129,7 @@ where
             .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
         let metrics = matches!(config.metrics_output, MetricsOutput::DB)
             .then(|| RunMetrics::new(config.clone(), data.num_points()));
-        
+
         // read cluster centers
         let cluster_dataset = root
             .dataset("clusters")
@@ -119,16 +144,13 @@ where
         let mut puffinn_indices = Vec::new();
         for c in &clusters {
             if !c.brute_force {
-                let index = PuffinnIndex::new_from_file(
-                    file_path, 
-                    &format!("index_{}", c.idx)
-                ).unwrap();
+                let index =
+                    PuffinnIndex::new_from_file(file_path, &format!("index_{}", c.idx)).unwrap();
                 puffinn_indices.push(Some(index));
-            }else{
+            } else {
                 puffinn_indices.push(None);
             }
         }
-        
 
         Ok(Self {
             data,
@@ -139,10 +161,19 @@ where
         })
     }
 
-    /// Builds the index with the provided config and data
+    /// Builds the index by performing clustering and creating PUFFINN indices.
+    ///
+    /// The build process consists of two main steps:
+    /// 1. Clustering: Uses greedy minimum-maximum clustering to partition the dataset
+    /// 2. Index Creation: Creates a PUFFINN index for each cluster (except small ones which use brute force)
+    ///
+    /// # Performance
+    /// - Time complexity: O(n * sqrt(n)) for clustering + O(n * L) for PUFFINN index creation
+    /// - Space complexity: O(n) for cluster assignments + O(n * L) for PUFFINN indices
+    /// where n is the dataset size and L is the number of tables
     ///
     /// # Errors
-    /// Returns a `ClusteredIndexError::PuffinnCreationError` if there are any errors in one of the PUFFINN index creation
+    /// Returns `ClusteredIndexError::PuffinnCreationError` if PUFFINN index creation fails for any cluster
     pub(crate) fn build(&mut self) -> Result<()> {
         let total_clusters = self.clusters.capacity();
         info!("Starting build process with {} clusters", total_clusters);
@@ -170,7 +201,8 @@ where
                     idx,
                     center_idx,
                     radius,
-                    brute_force: assignment_indexes.len() < 100 || assignment_indexes.len() < self.config.k,
+                    brute_force: assignment_indexes.len() < 100
+                        || assignment_indexes.len() < self.config.k,
                     assignment: assignment_indexes,
                     memory_used: 0,
                 };
@@ -191,7 +223,6 @@ where
         info!("Creating Puffinn indexes...");
         self.puffinn_indices = Vec::with_capacity(self.clusters.len());
         for (cluster_idx, cluster) in self.clusters.iter_mut().enumerate() {
-            
             // Progress logging
             if cluster_idx % 10 == 0 {
                 info!(
@@ -208,7 +239,11 @@ where
             }
 
             if cluster.brute_force {
-                info!("Skipping cluster {} with {} points: doing brute force", cluster.idx, cluster.assignment.len());
+                info!(
+                    "Skipping cluster {} with {} points: doing brute force",
+                    cluster.idx,
+                    cluster.assignment.len()
+                );
                 self.puffinn_indices.push(None);
                 continue;
             }
@@ -245,7 +280,7 @@ where
             "Build process completed. Total clusters: {}, Indexing time: {:.2?}",
             total_clusters, indexing_duration
         );
-        
+
         if let Some(metrics) = &mut self.metrics {
             metrics.log_index_building_time(indexing_duration);
         }
@@ -253,10 +288,26 @@ where
         Ok(())
     }
 
-    /// Search for the approximate k nearest neighbors to a query.
+    /// Searches for the k nearest neighbors of a query point.
+    ///
+    /// The search process:
+    /// 1. Sorts clusters by distance from query to their centers
+    /// 2. Processes clusters in order until termination condition is met
+    /// 3. For each cluster either:
+    ///    - Uses PUFFINN index to find candidates (large clusters)
+    ///    - Uses brute force search (small clusters)
     ///
     /// # Parameters
-    /// - `query`: A vector of the same type of the dataset representing the query point.
+    /// - `query`: Query point with same dimensionality as dataset points
+    ///
+    /// # Returns
+    /// Vector of (distance, index) pairs for the k nearest neighbors found,
+    /// sorted by distance in ascending order
+    ///
+    /// # Errors
+    /// - `ClusteredIndexError::IndexNotFound` if a required PUFFINN index is missing
+    /// - `ClusteredIndexError::PuffinnSearchError` if PUFFINN search fails
+    /// - `ClusteredIndexError::IndexOutOfBounds` if candidate mapping fails
     pub(crate) fn search(&mut self, query: &[T::DataType]) -> Result<Vec<(f32, usize)>> {
         if let Some(metrics) = &mut self.metrics {
             metrics.new_query();
@@ -284,9 +335,10 @@ where
 
             let cluster = &self.clusters[cluster_idx];
 
-            // exit conditions
-            // 1. if there are no more possible nearest neighbor stop
-            // 2. heuristic, if the last cluster didnt add any new points return
+            // exit condition: if there are no more possible nearest neighbor stop
+            // to see if there are no more possible nearest neighbor we check the top of the priority queue,
+            // if the distance to the worst point in PQ is less than the distance of the nearest possible point in the cluster
+            // then we can stop
             if let Some(top) = priority_queue.get_top() {
                 debug!("top: {:?}", top);
 
@@ -342,7 +394,7 @@ where
                     Err(e) => {
                         eprintln!("Error on cluster {}", cluster_idx);
                         return Err(e);
-                    },
+                    }
                 };
 
                 let mut min_dist_cluster = f32::INFINITY;
@@ -386,15 +438,18 @@ where
         Ok(priority_queue.to_list())
     }
 
-    /// Saves metrics to the specified sqlite3 database with the desired granularity. For example, if you select [`MetricsGranularity::Run`] only metrics for the whole run, like recall or total search time, are saved.
+    /// Saves metrics from a search run to a SQLite database.
     ///
     /// # Parameters
-    /// - `db_path`: Path to the sqlite3 database
-    /// - `granularity`: [`MetricsGranularity`] to specify which metrics need to be saved
-    /// - `ground_truth_distances`: Ground truth distances to calculate recall
-    /// - `run_distances`: Final distances returned by the search algorithm for all queries
-    /// - `dataset_len`: Length of the train dataset
-    /// - `total_search_time`: Search time for all queries
+    /// - `db_path`: Path to SQLite database file
+    /// - `granularity`: Level of detail for metrics (Run/Query/Cluster)
+    /// - `ground_truth_distances`: True k-NN distances for computing recall
+    /// - `run_distances`: Distances returned by the search algorithm
+    /// - `total_search_time`: Total time spent on all queries
+    ///
+    /// # Errors
+    /// - `ClusteredIndexError::MetricsError` if metrics are not enabled or database doesn't exist
+    /// - `ClusteredIndexError::ResultDBError` for database connection/operation errors
     pub(crate) fn save_metrics(
         &mut self,
         db_path: String,
@@ -404,7 +459,10 @@ where
         total_search_time: &Duration,
     ) -> Result<()> {
         if !db_exists(&db_path) {
-            return Err(ClusteredIndexError::MetricsError(format!("No existing database in path {}", db_path)));
+            return Err(ClusteredIndexError::MetricsError(format!(
+                "No existing database in path {}",
+                db_path
+            )));
         }
 
         // Connect to the database
@@ -414,23 +472,42 @@ where
         match conn_res {
             Ok(mut conn) => {
                 if let Some(metrics) = &mut self.metrics {
-                    return metrics
-                        .save_metrics(
-                            &mut conn, 
-                            granularity, 
-                            &self.clusters,
-                            ground_truth_distances,
-                            run_distances,
-                            total_search_time
-                        );
+                    return metrics.save_metrics(
+                        &mut conn,
+                        granularity,
+                        &self.clusters,
+                        ground_truth_distances,
+                        run_distances,
+                        total_search_time,
+                    );
                 } else {
-                    return Err(ClusteredIndexError::MetricsError("run metrics are not enabled".to_string()));
+                    return Err(ClusteredIndexError::MetricsError(
+                        "run metrics are not enabled".to_string(),
+                    ));
                 }
             }
             Err(e) => return Err(e),
         }
     }
 
+    /// Serializes the index to an HDF5 file.
+    ///
+    /// Saves:
+    /// - Configuration parameters
+    /// - Cluster information (centers, assignments, radii)
+    /// - PUFFINN indices for each cluster
+    ///
+    /// # Parameters
+    /// - `directory`: Directory where the index file will be saved
+    ///
+    /// # File naming
+    /// The file is named: `index_{dataset_name}_k{clusters_factor}_L{num_tables}.h5`
+    ///
+    /// # Errors
+    /// Returns `ClusteredIndexError::SerializeError` if:
+    /// - Directory doesn't exist
+    /// - File creation fails
+    /// - Serialization of any component fails
     pub(crate) fn serialize(&self, directory: &str) -> Result<()> {
         if fs::metadata(directory).is_err() {
             return Err(ClusteredIndexError::SerializeError(format!(
@@ -479,16 +556,39 @@ where
         Ok(())
     }
 
+    /// Returns the total number of distance computations for the current query.
+    ///
+    /// # Returns
+    /// Total number of distance computations if metrics are enabled
+    ///
+    /// # Errors
+    /// Returns `ClusteredIndexError::MetricsError` if metrics are not enabled
     pub fn get_distance_computations(&self) -> Result<usize> {
         if let Some(metrics) = &self.metrics {
             return Ok(metrics.current_query().unwrap().distance_computations);
         }
 
-        Err(ClusteredIndexError::MetricsError("run metrics are not enabled".to_string()))
+        Err(ClusteredIndexError::MetricsError(
+            "run metrics are not enabled".to_string(),
+        ))
     }
 
-    /// Helper to sort clusters in ascending order by distance from the query point
-    /// Returns only the indices
+    /// Sorts clusters by their distance from the query point.
+    ///
+    /// # Implementation
+    /// 1. Computes distance from query to each cluster center
+    /// 2. Sorts clusters by these distances in ascending order
+    /// 3. Returns indices of clusters in sorted order
+    ///
+    /// This ordering is crucial for early termination and efficiency:
+    /// - Closer clusters are more likely to contain nearest neighbors
+    /// - Allows terminating search when minimum distance to next cluster exceeds current kth distance
+    ///
+    /// # Parameters
+    /// - `query`: Query point to compute distances against
+    ///
+    /// # Returns
+    /// Vector of cluster indices sorted by distance from query to cluster centers
     fn sort_cluster_indices_by_distance(&mut self, query: &[T::DataType]) -> Vec<usize> {
         let mut cluster_distances: Vec<(usize, f32)> = self
             .clusters
@@ -515,6 +615,22 @@ where
         cluster_distances.into_iter().map(|(i, _)| i).collect()
     }
 
+    /// Maps local indices from PUFFINN search results to global dataset indices.
+    ///
+    /// PUFFINN returns indices local to the subset of points in a cluster.
+    /// This function maps them back to indices in the original dataset using
+    /// the cluster's assignment vector.
+    ///
+    /// # Parameters
+    /// - `candidates`: Vector of local indices from PUFFINN search
+    /// - `cluster`: Cluster containing the mapping information
+    ///
+    /// # Returns
+    /// Vector of global dataset indices corresponding to the local indices
+    ///
+    /// # Errors
+    /// Returns `ClusteredIndexError::IndexOutOfBounds` if any local index
+    /// exceeds the cluster's size
     fn map_candidates(&self, candidates: &[u32], cluster: &ClusterCenter) -> Result<Vec<usize>> {
         candidates
             .iter()
@@ -530,9 +646,23 @@ where
                 }
             })
             .collect::<Result<Vec<usize>>>()
-    }    
+    }
 
-    // Simple brute force search for small clusters
+    /// Performs brute force search within a cluster.
+    ///
+    /// Used for small clusters where building an index would be inefficient.
+    /// Computes distances to all points in the cluster and returns the k nearest.
+    ///
+    /// # Parameters
+    /// - `cluster`: Cluster to search in
+    /// - `query`: Query point
+    ///
+    /// # Returns
+    /// Vector of (distance, index) pairs for the k nearest neighbors in the cluster,
+    /// sorted by distance
+    ///
+    /// # Performance
+    /// Time complexity: O(cluster_size * dim) where dim is point dimensionality
     fn brute_force_search(
         &self,
         cluster: &ClusterCenter,
@@ -556,65 +686,64 @@ where
 }
 
 #[cfg(test)]
-    mod tests {
-        use ndarray::arr2;
-        use crate::{core::Config, metricdata::AngularData};
+mod tests {
+    use crate::{core::Config, metricdata::AngularData};
+    use ndarray::arr2;
 
-        use super::{ClusterCenter, ClusteredIndex};
+    use super::{ClusterCenter, ClusteredIndex};
 
-        #[test]
-        fn test_sort_cluster() {
-            let points = arr2(&[
-                [0.1, 0.9, 0.4],
-                [0.7, 0.2, 0.6],
-                [0.5, 0.3, 0.9],
-                [0.8, 0.4, 0.1],
-                [0.2, 0.1, 0.8],
-                [0.9, 0.8, 0.3],
-                [0.3, 0.6, 0.5],
-                [0.4, 0.3, 0.7],
-                [0.1, 0.2, 0.9],
-                [0.6, 0.7, 0.8],
-                [0.2, 0.8, 0.1],
-                [0.9, 0.2, 0.4],
-                [0.3, 0.5, 0.6],
-                [0.1, 0.9, 0.2],
-                [0.7, 0.4, 0.6],
-                [0.8, 0.3, 0.2],
-                [0.4, 0.6, 0.3],
-                [0.2, 0.7, 0.9],
-                [0.9, 0.4, 0.8],
-                [0.5, 0.1, 0.3],
-            ]);
+    #[test]
+    fn test_sort_cluster() {
+        let points = arr2(&[
+            [0.1, 0.9, 0.4],
+            [0.7, 0.2, 0.6],
+            [0.5, 0.3, 0.9],
+            [0.8, 0.4, 0.1],
+            [0.2, 0.1, 0.8],
+            [0.9, 0.8, 0.3],
+            [0.3, 0.6, 0.5],
+            [0.4, 0.3, 0.7],
+            [0.1, 0.2, 0.9],
+            [0.6, 0.7, 0.8],
+            [0.2, 0.8, 0.1],
+            [0.9, 0.2, 0.4],
+            [0.3, 0.5, 0.6],
+            [0.1, 0.9, 0.2],
+            [0.7, 0.4, 0.6],
+            [0.8, 0.3, 0.2],
+            [0.4, 0.6, 0.3],
+            [0.2, 0.7, 0.9],
+            [0.9, 0.4, 0.8],
+            [0.5, 0.1, 0.3],
+        ]);
 
-            let data = AngularData::new(points);
+        let data = AngularData::new(points);
 
-            let cluster_indices: [usize; 3] = [6, 3, 17];
-            let mut clusters = Vec::new();
-            for (idx, center_idx) in cluster_indices.iter().enumerate() {
-                clusters.push(ClusterCenter {
-                    idx,
-                    center_idx: *center_idx,
-                    radius: 0.0,
-                    assignment: vec![],
-                    brute_force: false,
-                    memory_used: 0,
-                });
-            }
-
-            let config = Config::default();
-
-            let mut index = ClusteredIndex{
-                data,
-                clusters,
-                config,
-                puffinn_indices: Vec::new(),
-                metrics: None,
-            };
-
-            let sorted_indices = index.sort_cluster_indices_by_distance(&[0.1,0.0,0.7]);
-
-            assert_eq!(sorted_indices, vec![2,0,1]);            
-
+        let cluster_indices: [usize; 3] = [6, 3, 17];
+        let mut clusters = Vec::new();
+        for (idx, center_idx) in cluster_indices.iter().enumerate() {
+            clusters.push(ClusterCenter {
+                idx,
+                center_idx: *center_idx,
+                radius: 0.0,
+                assignment: vec![],
+                brute_force: false,
+                memory_used: 0,
+            });
         }
+
+        let config = Config::default();
+
+        let mut index = ClusteredIndex {
+            data,
+            clusters,
+            config,
+            puffinn_indices: Vec::new(),
+            metrics: None,
+        };
+
+        let sorted_indices = index.sort_cluster_indices_by_distance(&[0.1, 0.0, 0.7]);
+
+        assert_eq!(sorted_indices, vec![2, 0, 1]);
     }
+}

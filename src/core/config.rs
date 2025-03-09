@@ -37,7 +37,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self { 
-            num_tables: 1,   
+            num_tables: 10,   
             num_clusters_factor: 1.0,
             k: 10, 
             delta: 0.9,
