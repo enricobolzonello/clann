@@ -25,7 +25,7 @@ fn main() {
         k: 10,
         delta: 0.9,
         dataset_name: "glove-25-angular".to_owned(),
-        metrics_output: MetricsOutput::None,
+        metrics_output: MetricsOutput::DB,
     };
 
     let index_path = format!(

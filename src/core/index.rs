@@ -102,6 +102,8 @@ where
             .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
         let config: Config = serde_json::from_str(config_ascii.as_str())
             .map_err(|e| ClusteredIndexError::ConfigError(e.to_string()))?;
+        let metrics = matches!(config.metrics_output, MetricsOutput::DB)
+            .then(|| RunMetrics::new(config.clone(), data.num_points()));
         
         // read cluster centers
         let cluster_dataset = root
@@ -133,7 +135,7 @@ where
             clusters,
             config,
             puffinn_indices,
-            metrics: None,
+            metrics,
         })
     }
 

@@ -252,7 +252,7 @@ impl RunMetrics {
     ) {
         // Recall
         (self.recall_mean, self.recall_std, _) =
-            get_recall_values(dataset_distances, run_distances, run_distances.len());
+            get_recall_values(dataset_distances, run_distances, self.config.k);
 
         // Search time
         self.total_search_time_s = *total_search_time;

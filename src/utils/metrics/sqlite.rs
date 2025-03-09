@@ -127,11 +127,11 @@ pub(crate) fn sqlite_insert_clann_results(
             delta,
             dataset,
             git_commit_hash,
-            total_time_ms,
+            search_time_ms,
             queries_per_second,
             recall_mean,
             recall_std,
-            created_at,
+            created_at
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             num_clusters_factor,
@@ -144,7 +144,7 @@ pub(crate) fn sqlite_insert_clann_results(
             queries_per_second,
             recall_mean,
             recall_std,
-            current_time,
+            current_time
         ],
     ) {
         Ok(_) => Ok(()),
