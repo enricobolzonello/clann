@@ -1,8 +1,8 @@
-pub mod config;
-pub mod index;
-pub mod errors;
-pub mod gmm;
+pub(crate) mod config;
+pub(crate) mod index;
+pub(crate) mod errors;
+pub(crate) mod gmm;
 mod heap;
 
-pub use config::Config;
+pub use config::{Config, MetricsOutput, MetricsGranularity};
 pub use errors::{Result, ClusteredIndexError};

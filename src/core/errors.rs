@@ -33,4 +33,7 @@ pub enum ClusteredIndexError {
 
     #[error("Serialize Error: {0}")]
     SerializeError(String),
+
+    #[error("Metrics Error: {0}")]
+    MetricsError(String),
 }

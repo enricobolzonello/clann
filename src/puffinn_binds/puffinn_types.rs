@@ -12,6 +12,9 @@ pub trait IndexableSimilarity<M: MetricData> {
     fn similarity_type(&self) -> &'static str;
 
     /// Inserts a data point into the PUFFINN index.
+    /// 
+    /// # Safety
+    /// Uses a C++ library
     unsafe fn insert_data(
         raw: *mut CPUFFINN,
         point: *const M::DataType,
@@ -19,6 +22,9 @@ pub trait IndexableSimilarity<M: MetricData> {
     );
 
     /// Searches for the nearest neighbors using the PUFFINN index.
+    /// 
+    /// # Safety
+    /// Uses a C++ library
     unsafe fn search_data(
         raw: *mut CPUFFINN,
         query: *const M::DataType,

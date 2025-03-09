@@ -68,7 +68,7 @@ impl<S: Data<Elem = f32>> MetricData for EuclideanData<S> {
 
 impl<S: Data<Elem = f32>> Subset for EuclideanData<S> {
     type Out = EuclideanData<OwnedRepr<f32>>;
-    fn subset(&self, indices: &Vec<usize>) -> Self::Out {
+    fn subset(&self, indices: &[usize]) -> Self::Out {
         EuclideanData::new(self.data.select(Axis(0), indices))
     }
 }

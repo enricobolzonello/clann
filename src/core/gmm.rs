@@ -18,7 +18,7 @@ fn argmax(v: &[f32]) -> usize {
 /// The centers array is a vector of indices into the input data.
 /// The assignment is a vector of indices into the centers array,
 /// with the same length as there are input rows.
-pub fn greedy_minimum_maximum<D: MetricData>(
+pub(crate) fn greedy_minimum_maximum<D: MetricData>(
     data: &D,
     k: usize,
 ) -> (Array1<usize>, Array1<usize>, Array1<f32>) {

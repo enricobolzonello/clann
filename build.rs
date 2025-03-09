@@ -3,7 +3,7 @@ use std::{path::Path, process::Command};
 fn main() {
     // Get the current Git commit hash
     let output = Command::new("git")
-        .args(&["rev-parse", "HEAD"])
+        .args(["rev-parse", "HEAD"])
         .output()
         .expect("Failed to execute git command");
 
@@ -61,7 +61,7 @@ fn main() {
         .clang_arg("c++")
         .clang_arg("-std=c++14")
         .clang_args(
-            &hdf5.include_paths.iter().map(|path| format!("-I{}", path.display())).collect::<Vec<_>>()
+            hdf5.include_paths.iter().map(|path| format!("-I{}", path.display())).collect::<Vec<_>>()
         )
         .trust_clang_mangling(true)
         .generate_comments(true)

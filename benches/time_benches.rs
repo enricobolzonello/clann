@@ -1,11 +1,5 @@
 use clann::{
-    build,
-    core::Config,
-    init_with_config,
-    metricdata::{AngularData, MetricData},
-    puffinn_binds::PuffinnIndex,
-    search,
-    utils::load_hdf5_dataset,
+    build, core::{Config, MetricsOutput}, init_with_config, metricdata::{AngularData, MetricData}, puffinn_binds::PuffinnIndex, search, utils::load_hdf5_dataset
 };
 use criterion::{
     criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion, PlotConfiguration
@@ -23,10 +17,10 @@ pub fn compare_implementations_time(c: &mut Criterion) {
     let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Linear);
 
     let dataset_path = format!("./datasets/{}.hdf5", configs[0].dataset_name);      // assume the dataset does not change
-    let (data_raw, queries, _) = load_hdf5_dataset(&dataset_path).unwrap();
+    let hdf5_dataset = load_hdf5_dataset(&dataset_path).unwrap();
 
     // Select a subset of queries for benchmarking
-    let num_queries = queries.nrows();
+    let num_queries = hdf5_dataset.dataset_queries.nrows();
     let mut rng = thread_rng();
     let query_indices: Vec<usize> = (0..num_queries)
         .collect::<Vec<usize>>()
@@ -35,7 +29,7 @@ pub fn compare_implementations_time(c: &mut Criterion) {
         .collect();
 
     for (config_idx, config) in configs.iter().enumerate() {
-        let data = AngularData::new(data_raw.clone());
+        let data = AngularData::new(hdf5_dataset.dataset_array.clone());
 
         // Initialize base PUFFINN index
         let (base_index, _memory) = PuffinnIndex::new(&data, config.num_tables * data.num_points() * 1024).unwrap();
@@ -47,6 +41,7 @@ pub fn compare_implementations_time(c: &mut Criterion) {
             k: config.k,
             delta: config.delta,
             dataset_name: config.dataset_name.clone(),
+            metrics_output: MetricsOutput::DB,
         };
         let mut clustered_index = init_with_config(data, clann_config).unwrap();
         build(&mut clustered_index).unwrap();
@@ -67,7 +62,7 @@ pub fn compare_implementations_time(c: &mut Criterion) {
             .warm_up_time(Duration::from_secs(1));
 
         for &query_idx in &query_indices {
-            let query = queries.row(query_idx);
+            let query = hdf5_dataset.dataset_queries.row(query_idx);
             let query_slice = query.as_slice().unwrap();
 
             // Benchmark clustered implementation

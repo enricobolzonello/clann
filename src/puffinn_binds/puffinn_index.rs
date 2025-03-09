@@ -46,7 +46,7 @@ impl PuffinnIndex {
         }
 
         // Rebuild the index after inserting the points.
-        let mut memory = 0;
+        let memory;
         unsafe {
             let r = CPUFFINN_index_rebuild(index.raw, num_maps as u32);
             if r == 0 {
@@ -118,7 +118,7 @@ impl PuffinnIndex {
         }
     }
 
-    pub fn save_to_file(&self, file_path: &str, index_id: usize) -> Result<(), String> {
+    pub(crate) fn save_to_file(&self, file_path: &str, index_id: usize) -> Result<(), String> {
         let file_path_cstring = CString::new(file_path)
             .map_err(|_| format!("Failed to convert file name '{}' to CString", file_path))?;
 
@@ -134,7 +134,7 @@ pub fn get_distance_computations() -> u32 {
     unsafe { CPUFFINN_get_distance_computations() }
 }
 
-pub fn clear_distance_computations() {
+pub(crate) fn clear_distance_computations() {
     unsafe {
         CPUFFINN_clear_distance_computations();
     }
@@ -148,8 +148,8 @@ mod tests {
 
     #[test]
     fn test_angular_create_index() {
-        let (data_raw, _, _) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
-        let data = AngularData::new(data_raw);
+        let hdf5_dataset = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
+        let data = AngularData::new(hdf5_dataset.dataset_array);
         let num_maps = 84;
 
         let index = PuffinnIndex::new(&data, num_maps);
@@ -158,12 +158,12 @@ mod tests {
 
     #[test]
     fn test_angular_search_index() {
-        let (data_raw, queries, _) = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
-        let data: AngularData<ndarray::OwnedRepr<f32>> = AngularData::new(data_raw);
+        let hdf5_dataset = load_hdf5_dataset("./datasets/glove-25-angular.hdf5").unwrap();
+        let data: AngularData<ndarray::OwnedRepr<f32>> = AngularData::new(hdf5_dataset.dataset_array);
         let num_maps = 84;
         let (index, _memory) = PuffinnIndex::new(&data, num_maps).unwrap();
 
-        let binding = queries.row(0);
+        let binding = hdf5_dataset.dataset_queries.row(0);
         let query = binding.as_slice().unwrap();
         let k = 10;
         let max_dist = 1.0;
