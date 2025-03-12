@@ -1,4 +1,4 @@
-use super::puffinn_bindings::{
+use super::puffinn_sys::{
     CPUFFINN_clear_distance_computations, CPUFFINN_get_distance_computations,
     CPUFFINN_index_create, CPUFFINN_index_rebuild, CPUFFINN_load_from_file, CPUFFINN_save_index,
     CPUFFINN,

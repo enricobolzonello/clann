@@ -1,4 +1,4 @@
-#include "../puffinn/include/puffinn.hpp"
+#include "../libpuffinn/include/puffinn.hpp"
 #include <string.h>
 #include <iostream>
 #include <hdf5.h>

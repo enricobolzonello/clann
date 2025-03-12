@@ -3,7 +3,7 @@ use ndarray::Data;
 
 use crate::metricdata::{AngularData, MetricData};
 
-use super::puffinn_bindings::{CPUFFINN_index_insert_cosine, CPUFFINN_search_cosine, CPUFFINN};
+use super::puffinn_sys::{CPUFFINN_index_insert_cosine, CPUFFINN_search_cosine, CPUFFINN};
 
 /// This trait extends [`MetricData`] enabling the insertion of the data into the PUFFINN index.
 pub trait IndexableSimilarity<M: MetricData> {

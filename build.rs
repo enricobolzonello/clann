@@ -20,8 +20,8 @@ fn main() {
         .atleast_version("1.10")
         .probe("hdf5")
         .expect("Failed to find HDF5");
-    let puffinn_include_dir = Path::new("puffinn/include");
-    let c_api_dir = Path::new("c_api");
+    let puffinn_include_dir = Path::new("libpuffinn/include");
+    let c_api_dir = Path::new("libpuffinn-ffi");
     let header_file = c_api_dir.join("c_binder.h");
     let cpp_file = c_api_dir.join("c_binder.cpp");
 
@@ -43,9 +43,9 @@ fn main() {
     }
 
     // Attempt to compile
-    println!("cargo:rerun-if-changed=c_api/c_binder.cpp");
-    println!("cargo:rerun-if-changed=c_api/c_binder.h");
-    build.compile("puffinn");
+    println!("cargo:rerun-if-changed=libpuffinn_ffi/c_binder.cpp");
+    println!("cargo:rerun-if-changed=libpuffinn_ffi/c_binder.h");
+    build.compile("libpuffinn");
 
     // Now generate the Rust bindings
     let bindings = bindgen::Builder::default()
@@ -69,7 +69,7 @@ fn main() {
         .expect("Unable to generate bindings");
 
     bindings
-        .write_to_file("src/puffinn_binds/puffinn_bindings.rs")
+        .write_to_file("src/puffinn_binds/puffinn_sys.rs")
         .expect("Couldn't write bindings!");
 
     // Link against OpenMP

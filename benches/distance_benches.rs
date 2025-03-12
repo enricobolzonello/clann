@@ -4,7 +4,7 @@
 ///
     use clann::core::{Config, MetricsGranularity};
     use clann::metricdata::{AngularData, MetricData};
-    use clann::puffinn_binds::puffinn_index::{get_distance_computations,PuffinnIndex};
+    use clann::puffinn_binds::puffinn::{get_distance_computations,PuffinnIndex};
     use clann::utils::load_hdf5_dataset;
     use clann::{build, init_from_file, init_with_config, save_metrics, search, serialize};
     use criterion::{criterion_group, criterion_main, Criterion};
